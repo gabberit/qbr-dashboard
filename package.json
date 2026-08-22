@@ -1,0 +1,11 @@
+{
+  "name": "qbr-collector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "QBR maand-collector -> Supabase (zonder BrightGauge)",
+  "scripts": {
+    "collect": "node collect_qbr_supabase.mjs",
+    "dryrun": "QBR_OFFLINE=1 QBR_TEMPLATE=index.html node collect_qbr_supabase.mjs"
+  }
+}
