@@ -70,7 +70,7 @@ const injectBase = (html, data) => { const { start, end } = braceSlice(html); re
 
 /* === 1. MICROSOFT GRAPH via GDAP (licenties + MFA/licentie-drilldown) === */
 async function msToken(tenantId) {
-  const body = new URLSearchParams({ client_id: CFG.ms.clientId, client_secret: CFG.ms.secret, grant_type: 'refresh_token', refresh_token: CFG.ms.refresh, scope: CFG.ms.scope });
+  const body = new URLSearchParams({ client_id: CFG.ms.clientId, grant_type: 'refresh_token', refresh_token: CFG.ms.refresh, scope: CFG.ms.scope });
   const tok = await (await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, { method: 'POST', body })).json();
   if (!tok.access_token) throw new Error('Graph-token: ' + (tok.error_description || tok.error));
   return tok.access_token;                                             // tok.refresh_token kan roteren -> persisteren
