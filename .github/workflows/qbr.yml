@@ -1,0 +1,74 @@
+name: QBR maand-collector
+
+ 
+
+on:
+
+  schedule:
+
+    - cron: '0 6 1 * *'      # elke 1e van de maand om 06:00 UTC
+
+  workflow_dispatch: {}       # handmatig starten (voor testen)
+
+ 
+
+jobs:
+
+  collect:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+
+        with:
+
+          node-version: '20'
+
+      - name: Run QBR collector
+
+        env:
+
+          # --- Hub (verplicht) ---
+
+          SUPA_URL:          ${{ secrets.SUPA_URL }}
+
+          SUPA_SERVICE_KEY:  ${{ secrets.SUPA_SERVICE_KEY }}
+
+          QBR_TEMPLATE:      index.html
+
+          # --- Bronnen: voeg toe naarmate je koppelt ---
+
+          MS_CLIENT_ID:      ${{ secrets.MS_CLIENT_ID }}
+
+          MS_SECRET:         ${{ secrets.MS_SECRET }}
+
+          MS_REFRESH_TOKEN:  ${{ secrets.MS_REFRESH_TOKEN }}
+
+          FRESHDESK_DOMAIN:  ${{ secrets.FRESHDESK_DOMAIN }}
+
+          FRESHDESK_KEY:     ${{ secrets.FRESHDESK_KEY }}
+
+          DRMM_PLATFORM:     ${{ secrets.DRMM_PLATFORM }}
+
+          DRMM_KEY:          ${{ secrets.DRMM_KEY }}
+
+          DRMM_SECRET:       ${{ secrets.DRMM_SECRET }}
+
+          DATTO_PUBLIC_KEY:  ${{ secrets.DATTO_PUBLIC_KEY }}
+
+          DATTO_SECRET_KEY:  ${{ secrets.DATTO_SECRET_KEY }}
+
+          ROCKETCYBER_BASE:  ${{ secrets.ROCKETCYBER_BASE }}
+
+          ROCKETCYBER_TOKEN: ${{ secrets.ROCKETCYBER_TOKEN }}
+
+          ITGLUE_KEY:        ${{ secrets.ITGLUE_KEY }}
+
+          ALERT_WEBHOOK:     ${{ secrets.ALERT_WEBHOOK }}
+
+        run: node collect_qbr_supabase.mjs
+
