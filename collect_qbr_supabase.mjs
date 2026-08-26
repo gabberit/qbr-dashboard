@@ -43,7 +43,9 @@ const CFG = {
 const log = (...a) => console.log('[qbr]', new Date().toISOString(), ...a);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function jfetch(url, opts = {}) {
-  const r = await fetch(url, opts);
+  // Accepteer zowel jfetch(url, {headers:{...}}) als jfetch(url, {Authorization:...}) (= kale headers)
+  const init = ('headers' in opts || 'method' in opts || 'body' in opts) ? opts : { headers: opts };
+  const r = await fetch(url, init);
   if (!r.ok) throw new Error(`${r.status} ${r.statusText} @ ${url} :: ${(await r.text()).slice(0, 140)}`);
   return r.json();
 }
@@ -279,7 +281,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-6 · app-only Graph] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-7 · app-only Graph] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
