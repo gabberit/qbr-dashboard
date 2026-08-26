@@ -73,8 +73,12 @@ async function msToken(tenantId) {
   const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
   const body = new URLSearchParams({ client_id: CFG.ms.clientId, client_secret: CFG.ms.secret,
     grant_type: 'client_credentials', scope: 'https://graph.microsoft.com/.default' });
-  const tok = await (await fetch(url, { method: 'POST', body })).json();
-  if (!tok.access_token) throw new Error('Graph-token: ' + (tok.error_description || tok.error));
+  const r = await fetch(url, { method: 'POST', body });
+  const tok = await r.json();
+  if (!tok.access_token) {
+    // toon de ECHTE reden (bv. AADSTS7000215 = verkeerde secret, AADSTS700016 = app niet gevonden)
+    throw new Error('token-endpoint ' + r.status + ': ' + (tok.error_description || tok.error || JSON.stringify(tok)).split('\n')[0]);
+  }
   return tok.access_token;
 }
 const mfaStrength = m => { const s = (m || []).join(',').toLowerCase();
@@ -275,7 +279,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-5 · app-only Graph] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-6 · app-only Graph] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
