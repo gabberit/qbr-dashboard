@@ -24,8 +24,7 @@ const CFG = {
   template: process.env.QBR_TEMPLATE || 'QBR_Slimme_Werkplek_Fivespark.html',
   outDir  : process.env.QBR_OUT || '.',
   supa: { url: process.env.SUPA_URL, key: process.env.SUPA_SERVICE_KEY },
-  ms      : { clientId: process.env.MS_CLIENT_ID, secret: process.env.MS_SECRET, refresh: process.env.MS_REFRESH_TOKEN,
-              scope: process.env.MS_SCOPE || 'https://graph.microsoft.com/.default offline_access' },
+  ms      : { clientId: process.env.MS_CLIENT_ID, secret: process.env.MS_SECRET }, // app-only: geen refresh token nodig
   dattoRmm: { platform: process.env.DRMM_PLATFORM, key: process.env.DRMM_KEY, secret: process.env.DRMM_SECRET },
   datto   : { pub: process.env.DATTO_PUBLIC_KEY, sec: process.env.DATTO_SECRET_KEY, base: 'https://api.datto.com' },
   rocket  : { base: process.env.ROCKETCYBER_BASE, token: process.env.ROCKETCYBER_TOKEN },
@@ -88,8 +87,11 @@ async function getMicrosoft(client) {
   const H = { Authorization: `Bearer ${await msToken(client.tenant_id)}` };
   const out = { licenties: {}, details: {} };
   try { const skus = await jfetch('https://graph.microsoft.com/v1.0/subscribedSkus', H);
-    let p = 0, a = 0; for (const s of skus.value || []) { p += s.prepaidUnits?.enabled || 0; a += s.consumedUnits || 0; }
-    out.licenties = { purchased: p, assigned: a }; } catch (e) { log('  graph lic:', e.message); }
+    const list = skus.value || [];
+    let p = 0, a = 0; for (const s of list) { p += s.prepaidUnits?.enabled || 0; a += s.consumedUnits || 0; }
+    out.licenties = { purchased: p, assigned: a };
+    log(`  graph lic: ${list.length} SKU('s), aangeschaft=${p} toegewezen=${a}`);
+  } catch (e) { log('  graph lic: FOUT', e.message); }
   try { const rep = await jfetch('https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationDetails?$top=200', H);
     const rows = (rep.value || []).slice(0, 12).map(u => [u.userDisplayName || u.userPrincipalName, '\u2014',
       u.isMfaRegistered ? { t: 'Aan', cls: 'c-success b' } : { t: 'Uit', cls: 'c-danger b' }, (u.methodsRegistered || []).join(', ') || '\u2014', mfaStrength(u.methodsRegistered)]);
@@ -273,7 +275,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-4 · app-only Graph] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-5 · app-only Graph] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
