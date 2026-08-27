@@ -337,28 +337,30 @@ async function getAIduiding(base) {
     licentietabel: base.licenties?.skus?.map(r => ({ sku: r[0], aangeschaft: r[1], toegewezen: r[2] })),
     scorecard: base.scorecard?.map(k => ({ [k.lbl]: k.val })),
   };
+  const NONE = 'GEEN_DUIDING';
   const system = [
-    'Je bent een IT-/security-analist die een korte QBR-duiding schrijft voor een MSP (Fivespark).',
-    'Strikte regels:',
-    '1. Baseer ELKE uitspraak uitsluitend op de meegegeven cijfers.',
-    '2. Verzin NOOIT getallen, percentages, bedragen of bevindingen die niet in de data staan.',
-    '3. Is de data onvoldoende voor een zinvolle conclusie? Antwoord dan EXACT: "Onvoldoende data voor duiding." en niets anders.',
-    '4. Geef geen advies dat je niet direct uit de cijfers kunt onderbouwen.',
-    '5. Nederlands, zakelijk, bondig, maximaal 4 korte zinnen. Geen aannames over ontbrekende bronnen.',
+    'Je bent een IT-/security-analist die een korte QBR-duiding schrijft voor een MSP (Fivespark), die richting de KLANT gaat.',
+    'STRIKTE REGELS:',
+    `1. Twijfel je ook maar iets, of dekken de cijfers geen zinvolle conclusie? Antwoord dan EXACT: ${NONE} — en niets anders. Bij twijfel ALTIJD ${NONE}.`,
+    '2. Baseer elke uitspraak uitsluitend op de meegegeven cijfers. Verzin NOOIT getallen, percentages, bedragen, trends of bevindingen die niet in de data staan.',
+    '3. Doe alleen een aanbeveling als die rechtstreeks en onweerlegbaar uit de cijfers volgt. Kun je dat niet? Dan geen aanbeveling.',
+    '4. Weinig data (bv. maar 1 licentie, geen trend, ontbrekende bronnen) is normaal een reden voor ' + NONE + '.',
+    '5. Als je wél schrijft: Nederlands, zakelijk, feitelijk, maximaal 3 korte zinnen. Geen slagen om de arm, geen "waarschijnlijk"/"mogelijk". Alleen wat zeker is.',
+    'Liever ' + NONE + ' dan een onzekere uitspraak richting de klant.',
   ].join('\n');
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': CFG.ai.key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model: CFG.ai.model, max_tokens: 400, system,
-        messages: [{ role: 'user', content: 'Cijfers (JSON):\n' + JSON.stringify(feiten, null, 0) + '\n\nSchrijf de duiding.' }] }),
+        messages: [{ role: 'user', content: 'Cijfers (JSON):\n' + JSON.stringify(feiten, null, 0) + '\n\nSchrijf de duiding, of ' + NONE + '.' }] }),
     });
     const j = await r.json();
     if (!r.ok) { log('  ai-duiding: FOUT', r.status, (j.error?.message || '').slice(0, 120)); return; }
     const txt = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-    if (txt) { base.aiDuiding = { concept: txt, model: CFG.ai.model, ts: new Date().toISOString(),
-      label: 'AI-CONCEPT \u2014 automatisch gegenereerd, controleren v\u00f3\u00f3r gebruik richting klant' };
-      log('  ai-duiding: ' + txt.length + ' tekens (concept ter controle)'); }
+    if (!txt || txt.includes(NONE)) { log('  ai-duiding: geen duiding (onvoldoende zekerheid)'); return; }
+    base.aiDuiding = { concept: txt, model: CFG.ai.model, ts: new Date().toISOString() };
+    log('  ai-duiding: ' + txt.length + ' tekens (klantzichtbaar)');
   } catch (e) { log('  ai-duiding: FOUT', e.message); }
 }
 
@@ -366,11 +368,13 @@ async function buildForClient(client, templateHtml) {
   const base = extractBase(templateHtml);
   base.meta.client = client.name; base.meta.quarter = periodLabel();
   const sources = [getMicrosoft, getGRC, getDattoRMM, getDattoBCDR, getRocketCyber, getK365User, getINKY, getSaaSAlerts, getITGlue, getFreshdesk];
-  const slices = [];
-  for (const fn of sources) { try { const r = await fn(client); if (r) slices.push(r); } catch (e) { log('  bron-fout', client.name, fn.name, e.message); } }
+  const slices = []; const srcOk = {};
+  const KEY = { getMicrosoft: 'microsoft', getGRC: 'grc', getDattoRMM: 'rmm', getDattoBCDR: 'rmm', getRocketCyber: 'mdr', getK365User: 'awareness', getINKY: 'email', getSaaSAlerts: 'mdr', getITGlue: 'hardware', getFreshdesk: 'service' };
+  for (const fn of sources) { try { const r = await fn(client); if (r) { slices.push(r); srcOk[KEY[fn.name]] = true; } } catch (e) { log('  bron-fout', client.name, fn.name, e.message); } }
   overlay(base, slices);
+  base._sources = srcOk;                       // welke bronnen leverden data -> dashboard toont "nog niet gekoppeld" voor de rest
   await addTrend(client.id, base);
-  await getAIduiding(base); // AI-duiding op basis van de echte data (concept ter controle)
+  await getAIduiding(base); // AI-duiding op basis van de echte data (conservatief; leeg bij twijfel)
   return base;
 }
 
@@ -384,7 +388,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-9 · MS-sectie + AI-duiding] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-10 · conservatieve AI + lege template] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
