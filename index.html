@@ -701,6 +701,19 @@ let html="";
 
 html += `<section class="section" style="border-bottom:1px solid var(--line)"><div class="note"><h4>Kernboodschap</h4><p style="font-size:14.5px">${D.kern}</p></div></section>`;
 
+// "nog niet gekoppeld"-blok voor secties zonder bron
+const nc = (bron) => `<div style="padding:22px;border:1px dashed var(--line);border-radius:12px;background:var(--ice-2,#EFEFEC);color:var(--muted);font-size:14px;text-align:center">Nog niet gekoppeld${bron?` \u00b7 <b style="color:var(--ink)">${bron}</b>`:''}<div style="font-size:12.5px;opacity:.8;margin-top:4px">Deze sectie vult zich zodra de bron is aangesloten.</div></div>`;
+// bron gekoppeld? (collector schrijft D._sources)
+const coupled = (name) => !D._sources || D._sources[name] === true;
+const secC = (ok, id, ix, title, src, body) => sec(id, ix, title, src, ok ? body : nc(src));
+
+// AI-duiding (klantzichtbaar; alleen als het model een gedekte conclusie gaf)
+if (D.aiDuiding && D.aiDuiding.concept) {
+  html += `<section class="section" style="border-bottom:1px solid var(--line)"><div class="note" style="background:var(--brand-tint,#FFF7E0);border-color:var(--brand,#FFC20E)">
+    <h4 style="display:flex;align-items:center;gap:8px">Duiding <span style="font-weight:500;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">automatisch gegenereerd</span></h4>
+    <p style="font-size:14.5px;white-space:pre-wrap">${D.aiDuiding.concept}</p></div></section>`;
+}
+
 const spark=(series,color,goodUp)=>{
   if(!series||series.length<2) return '<div class="cap" style="text-align:left">geen trenddata</div>';
   const vs=series.map(p=>p.v),mn=Math.min(...vs),mx=Math.max(...vs),rng=(mx-mn)||1,W=240,H=52,pad=6;
@@ -717,7 +730,7 @@ if(D.trend) html += sec("trend","◷","Trend — laatste maanden","Maandelijkse 
     <div class="card"><div class="mini-h">NIS2-baseline</div>${spark(D.trend.nis2,'#185FA5',true)}</div>
   </div>`);
 
-html += sec("service","02","Service &amp; support — top tickets",S.src,`
+html += secC(coupled("service"),"service","02","Service &amp; support — top tickets",S.src,`
   <div class="grid-72">
     <div class="card">${tbl(["Categorie","Aantal","Trend"],S.tickets)}</div>
     <div>
@@ -729,7 +742,7 @@ html += sec("service","02","Service &amp; support — top tickets",S.src,`
     </div>
   </div>`);
 
-html += sec("mdr","03","Security posture — RocketCyber MDR (24/7 SOC)",M.src,`
+html += secC(coupled("mdr"),"mdr","03","Security posture — RocketCyber MDR (24/7 SOC)",M.src,`
   <div class="tiles c4">${M.stats.map(tile).join("")}</div>
   <div class="grid2">
     <div class="card"><h3>Aangesloten bronnen op de SOC</h3>${tbl(["Bron","Laag","Status"],M.bronnen)}</div>
@@ -737,14 +750,14 @@ html += sec("mdr","03","Security posture — RocketCyber MDR (24/7 SOC)",M.src,`
   </div>
   <p class="cap" style="text-align:left;margin-top:14px;color:var(--brand-dk)">${M.cap}</p>`);
 
-html += sec("email","04","E-mailbeveiliging — gelaagd",E.src,`
+html += secC(coupled("email"),"email","04","E-mailbeveiliging — gelaagd",E.src,`
   <div class="grid2">
     <div class="card"><h3>Defender for Office 365 <span class="sub">· pre-delivery</span></h3>${tbl(["Maatregel","Aantal"],E.defender)}<p class="cap" style="text-align:left">${E.defenderCap}</p></div>
     <div class="card"><h3>INKY <span class="sub">· in-the-inbox</span></h3>${tbl(["Maatregel","Aantal"],E.inky)}<p class="cap" style="text-align:left">${E.inkyCap}</p></div>
   </div>
   <p class="cap" style="text-align:left;margin-top:14px;color:var(--brand-dk)">${E.cap}</p>`);
 
-html += sec("purview","05","Data &amp; compliance — Purview",P.src,`
+html += secC(coupled("grc"),"purview","05","Data &amp; compliance — Purview",P.src,`
   <div class="grid2">
     <div class="card">
       <div class="mini-h">Classificatie — sensitivity labels</div>
@@ -756,7 +769,7 @@ html += sec("purview","05","Data &amp; compliance — Purview",P.src,`
   </div>
   <div class="note" style="margin-top:18px"><h4>Waarom dit ertoe doet</h4><ul>${P.why.map(x=>`<li>${x}</li>`).join("")}</ul></div>`);
 
-html += sec("awareness","06","Awareness — security training",A.src,`
+html += secC(coupled("awareness"),"awareness","06","Awareness — security training",A.src,`
   <div class="grid-72">
     <div class="card">
       <div class="chart">${A.bars.map(b=>`<div class="col"><div class="bar-v" data-h="${Math.min(100,b.val*4)}" style="background:${b.color}"><span>${b.val}%</span></div><div class="xl">${b.q}</div></div>`).join("")}</div>
@@ -765,7 +778,7 @@ html += sec("awareness","06","Awareness — security training",A.src,`
     <div class="tiles" style="grid-template-columns:1fr">${A.stats.map(tile).join("")}</div>
   </div>`);
 
-html += sec("compliance","07","Compliance — raamwerk NIS2",C.src,`
+html += secC(coupled("grc"),"compliance","07","Compliance — raamwerk NIS2",C.src,`
   <div class="grid2">
     <div class="card clk" data-det="nis2">
       <div><span class="big-pct">${C.pct}%</span> <span style="color:var(--muted);font-size:14px">NIS2-baseline</span></div>
@@ -775,12 +788,12 @@ html += sec("compliance","07","Compliance — raamwerk NIS2",C.src,`
     <div class="note"><h4>Volgende stappen</h4><ul>${C.steps.map(x=>`<li>${x}</li>`).join("")}</ul></div>
   </div>`);
 
-html += sec("rmm","08","Health &amp; patch — Kaseya RMM",R.src,`
+html += secC(coupled("rmm"),"rmm","08","Health &amp; patch — Kaseya RMM",R.src,`
   <div class="tiles c4">${R.stats.map(tile).join("")}</div>
   <div class="card">${tbl(["Onderdeel","Status","Detail"],R.table)}</div>
   <p class="cap" style="text-align:left;margin-top:14px;color:var(--brand-dk)">${R.cap}</p>`);
 
-html += sec("hardware","09","Hardware lifecycle — van top tot teen",H.src,`
+html += secC(coupled("hardware"),"hardware","09","Hardware lifecycle — van top tot teen",H.src,`
   <div class="card clk" data-det="${H.eolDet}">${tbl(["Categorie","Aantal","Gem. leeftijd","End-of-life","Advies"],H.table)}</div>
   <div class="grid2" style="margin-top:18px">
     <div class="tile" style="padding:20px 22px">
@@ -791,13 +804,13 @@ html += sec("hardware","09","Hardware lifecycle — van top tot teen",H.src,`
     <div class="note"><h4>${H.apTitle}</h4><p style="font-size:13.5px">${H.apNote}</p></div>
   </div>`);
 
-html += sec("licenties","10","Microsoft licenties — verbruik &amp; optimalisatie",L.src,`
-  <div class="tiles c5">${L.stats.map(tile).join("")}</div>
+html += secC(coupled("microsoft"),"licenties","10","Microsoft licenties — verbruik &amp; optimalisatie",L.src,`
+  <div class="tiles c5">${(L.stats||[]).map(tile).join("")}</div>
   <div class="grid2">
-    <div class="card">${tbl(["SKU","Aangesch.","Toegew.","Ongebr.","Inactief"],L.skus)}<p class="cap" style="text-align:left;margin-top:10px">${L.skuCap}</p></div>
-    <div class="card"><h3>Optimalisatievoorstel</h3><div class="prop">${L.voorstel.map(v=>`<div class="prop-row"><span class="pill ${v.pillCls}">${v.pill}</span><p>${v.text}</p></div>`).join("")}</div></div>
+    <div class="card">${tbl(["SKU","Aangesch.","Toegew.","Ongebr.","Inactief"],L.skus||[])}<p class="cap" style="text-align:left;margin-top:10px">${L.skuCap||""}</p></div>
+    ${(L.voorstel&&L.voorstel.length)?`<div class="card"><h3>Optimalisatievoorstel</h3><div class="prop">${L.voorstel.map(v=>`<div class="prop-row"><span class="pill ${v.pillCls}">${v.pill}</span><p>${v.text}</p></div>`).join("")}</div></div>`:``}
   </div>
-  <div class="save-banner"><span class="s1">${L.saving.s1}</span><span class="s2">${L.saving.s2}</span></div>`);
+  ${L.saving?`<div class="save-banner"><span class="s1">${L.saving.s1||""}</span><span class="s2">${L.saving.s2||""}</span></div>`:``}`);
 
 html += sec("roadmap","11","Roadmap &amp; advies",RM.src,`
   <div class="road">${RM.items.map(r=>`<div class="road-row"><span class="pill ${r.cls}">${r.pill}</span><p>${r.text}</p></div>`).join("")}</div>`);
@@ -848,8 +861,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 
 /* ---- Supabase: maandelijkse snapshots — intern of klantgericht ---- */
 const QBR_MODE  = "intern"; // "intern" = kies klant + periode  |  "klant" = alleen periode (per-klant RLS-token)
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoZ3h0eXRhdXVyemxzcXpqeHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczOTAwOTIsImV4cCI6MjEwMjk2NjA5Mn0.68yKsq44c5Q1ItPe-DL8z1f_i0QwHw1d2pnzNMUaKic";   // anon public key (alleen-lezen; RLS beschermt de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (alleen-lezen; RLS beschermt de data)
 const sHead = () => ({ apikey: SUPA_ANON, Authorization: "Bearer " + SUPA_ANON });
 async function sget(path){ const r=await fetch(SUPA_URL+"/rest/v1/"+path,{headers:sHead()}); if(!r.ok) throw new Error(r.status); return r.json(); }
 async function initSelectors(){
