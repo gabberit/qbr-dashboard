@@ -861,8 +861,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 
 /* ---- Supabase: maandelijkse snapshots — intern of klantgericht ---- */
 const QBR_MODE  = "intern"; // "intern" = kies klant + periode  |  "klant" = alleen periode (per-klant RLS-token)
-const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "";   // anon public key (alleen-lezen; RLS beschermt de data)
+const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (alleen-lezen; RLS beschermt de data)
 const sHead = () => ({ apikey: SUPA_ANON, Authorization: "Bearer " + SUPA_ANON });
 async function sget(path){ const r=await fetch(SUPA_URL+"/rest/v1/"+path,{headers:sHead()}); if(!r.ok) throw new Error(r.status); return r.json(); }
 async function initSelectors(){
