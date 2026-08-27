@@ -35,6 +35,7 @@ const CFG = {
   saasalerts:{ base: process.env.SAASALERTS_BASE, key: process.env.SAASALERTS_KEY },
   itglue  : { base: 'https://api.itglue.com', key: process.env.ITGLUE_KEY },
   fresh   : { domain: process.env.FRESHDESK_DOMAIN, key: process.env.FRESHDESK_KEY, catField: process.env.FRESHDESK_CATEGORY || 'type' },
+  ai      : { key: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5' },
   run     : { batchSize: Number(process.env.QBR_BATCH || 20), delayMs: Number(process.env.QBR_DELAY || 4000),
               trendN: Number(process.env.QBR_TRENDN || 12), sinceDays: Number(process.env.QBR_SINCE_DAYS || 30) },
   alertWebhook: process.env.ALERT_WEBHOOK,
@@ -88,21 +89,87 @@ const mfaStrength = m => { const s = (m || []).join(',').toLowerCase();
   if (/authenticator|softwareoath/.test(s)) return { t: 'Goed', cls: 'c-success' };
   if (/sms|voice|phone/.test(s)) return { t: 'Zwak \u2014 migreren', cls: 'c-warning b' };
   return { t: '\u2014', cls: 'c-muted' }; };
+const SKU_NAMES = {
+  O365_BUSINESS_ESSENTIALS: 'Microsoft 365 Business Basic', O365_BUSINESS_PREMIUM: 'Microsoft 365 Business Standard',
+  SPB: 'Microsoft 365 Business Premium', SPE_E3: 'Microsoft 365 E3', SPE_E5: 'Microsoft 365 E5', SPE_F1: 'Microsoft 365 F3',
+  ENTERPRISEPACK: 'Office 365 E3', ENTERPRISEPREMIUM: 'Office 365 E5', EXCHANGESTANDARD: 'Exchange Online Plan 1',
+  EXCHANGEENTERPRISE: 'Exchange Online Plan 2', MCOEV: 'Teams Phone Standard', MCOMEETADV: 'Teams Audio Conferencing',
+  POWER_BI_PRO: 'Power BI Pro', POWER_BI_STANDARD: 'Power BI (gratis)', FLOW_FREE: 'Power Automate (gratis)',
+  AAD_PREMIUM: 'Entra ID P1', AAD_PREMIUM_P2: 'Entra ID P2', EMS: 'EMS E3', EMSPREMIUM: 'EMS E5',
+  PROJECTPROFESSIONAL: 'Project Plan 3', VISIOCLIENT: 'Visio Plan 2', WINDOWS_STORE: 'Windows Store',
+};
+const skuName = p => SKU_NAMES[p] || p;
+
 async function getMicrosoft(client) {
   if (!CFG.ms.clientId || !CFG.ms.secret || !client.tenant_id) return null;
   const H = { Authorization: `Bearer ${await msToken(client.tenant_id)}` };
-  const out = { licenties: {}, details: {} };
-  try { const skus = await jfetch('https://graph.microsoft.com/v1.0/subscribedSkus', H);
-    const list = skus.value || [];
-    let p = 0, a = 0; for (const s of list) { p += s.prepaidUnits?.enabled || 0; a += s.consumedUnits || 0; }
-    out.licenties = { purchased: p, assigned: a };
-    log(`  graph lic: ${list.length} SKU('s), aangeschaft=${p} toegewezen=${a}`);
+  const out = { scorecard: {}, details: {} };
+
+  // --- Licenties: per SKU + totalen ---
+  try {
+    const skus = (await jfetch('https://graph.microsoft.com/v1.0/subscribedSkus', H)).value || [];
+    let purchased = 0, assigned = 0; const rows = [];
+    for (const s of skus) {
+      const enabled = s.prepaidUnits?.enabled || 0, used = s.consumedUnits || 0;
+      if (!enabled && !used) continue;
+      purchased += enabled; assigned += used; const free = enabled - used;
+      rows.push([skuName(s.skuPartNumber), String(enabled), String(used),
+        { t: String(free), cls: free > 0 ? 'c-warning' : 'c-muted' }, '\u2014']);
+    }
+    out.licentiesFull = { src: 'Bron: Entra ID \u00b7 Microsoft Graph', skus: rows,
+      stats: [
+        { lbl: 'Aangeschaft', val: String(purchased) },
+        { lbl: 'Toegewezen', val: String(assigned), delta: purchased ? Math.round(assigned / purchased * 100) + '%' : '', deltaCls: 'c-muted' },
+        { det: 'licUnused', lbl: 'Ongebruikt', val: String(purchased - assigned), valCls: (purchased - assigned) > 0 ? 'c-warning' : 'c-success' },
+        { det: 'licInactive', lbl: 'Inactief > 60d', val: '0', valCls: 'c-muted' },
+      ] };
+    log(`  graph lic: ${skus.length} SKU('s), aangeschaft=${purchased} toegewezen=${assigned}`);
   } catch (e) { log('  graph lic: FOUT', e.message); }
-  try { const rep = await jfetch('https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationDetails?$top=200', H);
-    const rows = (rep.value || []).slice(0, 12).map(u => [u.userDisplayName || u.userPrincipalName, '\u2014',
-      u.isMfaRegistered ? { t: 'Aan', cls: 'c-success b' } : { t: 'Uit', cls: 'c-danger b' }, (u.methodsRegistered || []).join(', ') || '\u2014', mfaStrength(u.methodsRegistered)]);
+
+  // --- Secure Score + Identity Secure Score ---
+  try {
+    const ss = (await jfetch('https://graph.microsoft.com/v1.0/security/secureScores?$top=1', H)).value?.[0];
+    if (ss && ss.maxScore) {
+      out.scorecard.secure = Math.round(ss.currentScore / ss.maxScore * 100);
+      const idc = (ss.controlScores || []).filter(c => (c.controlCategory || '').toLowerCase() === 'identity');
+      if (idc.length) out.scorecard.mfa = Math.round(idc.reduce((n, c) => n + (c.score || 0), 0) / idc.length);
+      log(`  graph secure: ${out.scorecard.secure}% (${ss.currentScore}/${ss.maxScore})`);
+    } else { log('  graph secure: geen data'); }
+  } catch (e) { log('  graph secure: FOUT', e.message); }
+
+  // --- Inactieve accounts met licentie (drilldown) ---
+  try {
+    const u = (await jfetch('https://graph.microsoft.com/v1.0/users?$top=200&$select=displayName,userPrincipalName,department,signInActivity,assignedLicenses', H)).value || [];
+    const now = Date.now(); const inact = [];
+    for (const p of u) {
+      if (!(p.assignedLicenses || []).length) continue;
+      const last = p.signInActivity?.lastSignInDateTime;
+      const days = last ? Math.round((now - Date.parse(last)) / 864e5) : 999;
+      if (days > 60) inact.push([p.userPrincipalName, p.department || '\u2014', String((p.assignedLicenses || []).length), last ? `${days} dagen` : 'nooit', { t: 'Deprovisionen', cls: 'c-danger b' }]);
+    }
+    out.inactCount = inact.length;
+    if (inact.length) out.details.licInactive = { title: 'Inactieve accounts > 60 dagen', src: 'Entra ID \u00b7 Graph', cols: ['Account', 'Afdeling', 'Licenties', 'Laatst actief', 'Advies'], rows: inact.slice(0, 20) };
+    log(`  graph users: ${u.length} gebruikers, ${inact.length} inactief>60d`);
+  } catch (e) { log('  graph users: FOUT', e.message); }
+
+  // --- MFA-registratie per gebruiker (vereist Entra ID P1/P2) ---
+  try {
+    const rep = (await jfetch('https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationDetails?$top=200', H)).value || [];
+    const rows = rep.slice(0, 20).map(x => [x.userDisplayName || x.userPrincipalName, '\u2014',
+      x.isMfaRegistered ? { t: 'Aan', cls: 'c-success b' } : { t: 'Uit', cls: 'c-danger b' }, (x.methodsRegistered || []).join(', ') || '\u2014', mfaStrength(x.methodsRegistered)]);
     if (rows.length) out.details.mfa = { title: 'MFA & sterke authenticatie \u2014 per gebruiker', src: 'Entra ID \u00b7 Graph', cols: ['Gebruiker', 'Afdeling', 'MFA', 'Methode', 'Sterkte'], rows };
-  } catch (e) { log('  graph mfa:', e.message); }
+    log(`  graph mfa: ${rep.length} registraties`);
+  } catch (e) { log('  graph mfa (P1/P2 vereist):', e.message.split('::')[0]); }
+
+  // --- Defender/Purview-signalen via security alerts (vereist E5/P2; leeg in Basic-tenant) ---
+  try {
+    const al = (await jfetch('https://graph.microsoft.com/v1.0/security/alerts_v2?$top=200', H)).value || [];
+    const dlp = al.filter(a => /dlp|informationprotection|purview/i.test(JSON.stringify(a.category || a.detectionSource || ''))).length;
+    if (al.length) out.scorecard.threats = al.length;
+    if (dlp) out.scorecard.dlp = dlp;
+    log(`  graph alerts: ${al.length} (dlp ~${dlp})`);
+  } catch (e) { log('  graph alerts (E5 vereist):', e.message.split('::')[0]); }
+
   return out;
 }
 
@@ -227,12 +294,12 @@ async function getFreshdesk(client) {
 
 /* === OVERLAY ============================================================ */
 function setKpi(base, det, val) { const k = base.scorecard.find(x => x.det === det); if (!k || val == null) return;
-  const pct = ['secure', 'identity', 'nis2', 'patch', 'aware'].includes(det);
+  const pct = ['secure', 'mfa', 'identity', 'nis2', 'patch', 'aware'].includes(det);
   k.val = pct && !String(val).includes('%') ? String(val) + '%' : String(val); }
 const tile = (list, needle, val) => { const t = (list || []).find(x => x.lbl && x.lbl.toLowerCase().includes(needle)); if (t && val != null) t.val = String(val); };
 function overlay(base, slices) {
   for (const s of slices) { if (!s) continue;
-    if (s.scorecard) for (const d of ['secure', 'identity', 'nis2', 'patch', 'aware', 'vuln', 'phish', 'dlp']) if (s.scorecard[d] != null) setKpi(base, d, s.scorecard[d]);
+    if (s.scorecard) for (const d of ['secure', 'mfa', 'identity', 'nis2', 'patch', 'aware', 'vuln', 'phish', 'dlp', 'threats']) if (s.scorecard[d] != null) setKpi(base, d, s.scorecard[d]);
     if (s.service?.totaalVal) base.service.totaal.val = s.service.totaalVal;
     if (s.service?.slaVal) base.service.sla.val = s.service.slaVal;
     if (s.service?.tickets?.length) base.service.tickets = s.service.tickets;
@@ -240,7 +307,8 @@ function overlay(base, slices) {
     if (s.mdr?.p1) tile(base.mdr?.stats, 'kritieke', s.mdr.p1);
     if (s.rmm?.backupNote && base.rmm?.stats) { const t = base.rmm.stats.find(x => (x.lbl || '').toLowerCase().includes('back-up')); if (t) t.delta = s.rmm.backupNote; }
     if (s.hardware && base.hardware) { /* map naar hardware-sectie indien aanwezig */ }
-    if (s.licenties) { tile(base.licenties?.stats, 'aangeschaft', s.licenties.purchased); tile(base.licenties?.stats, 'toegewezen', s.licenties.assigned); }
+    if (s.licentiesFull) { base.licenties = s.licentiesFull;
+      if (s.inactCount != null) { const t = base.licenties.stats.find(x => x.det === 'licInactive'); if (t) { t.val = String(s.inactCount); t.valCls = s.inactCount > 0 ? 'c-danger' : 'c-muted'; } } }
     if (s.details) base.details = { ...base.details, ...s.details };
   }
   return base;
@@ -260,6 +328,40 @@ async function addTrend(clientId, base) {
 
 /* === PER KLANT ========================================================== */
 const periodLabel = (d = new Date()) => `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+async function getAIduiding(base) {
+  if (!CFG.ai.key) return; // geen key -> geen duiding (Optie A)
+  // Alleen ECHTE, aanwezige cijfers meesturen; niets verzinnen.
+  const feiten = {
+    klant: base.meta?.client, periode: base.meta?.quarter,
+    licenties: base.licenties?.stats?.map(s => ({ [s.lbl]: s.val })),
+    licentietabel: base.licenties?.skus?.map(r => ({ sku: r[0], aangeschaft: r[1], toegewezen: r[2] })),
+    scorecard: base.scorecard?.map(k => ({ [k.lbl]: k.val })),
+  };
+  const system = [
+    'Je bent een IT-/security-analist die een korte QBR-duiding schrijft voor een MSP (Fivespark).',
+    'Strikte regels:',
+    '1. Baseer ELKE uitspraak uitsluitend op de meegegeven cijfers.',
+    '2. Verzin NOOIT getallen, percentages, bedragen of bevindingen die niet in de data staan.',
+    '3. Is de data onvoldoende voor een zinvolle conclusie? Antwoord dan EXACT: "Onvoldoende data voor duiding." en niets anders.',
+    '4. Geef geen advies dat je niet direct uit de cijfers kunt onderbouwen.',
+    '5. Nederlands, zakelijk, bondig, maximaal 4 korte zinnen. Geen aannames over ontbrekende bronnen.',
+  ].join('\n');
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': CFG.ai.key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: CFG.ai.model, max_tokens: 400, system,
+        messages: [{ role: 'user', content: 'Cijfers (JSON):\n' + JSON.stringify(feiten, null, 0) + '\n\nSchrijf de duiding.' }] }),
+    });
+    const j = await r.json();
+    if (!r.ok) { log('  ai-duiding: FOUT', r.status, (j.error?.message || '').slice(0, 120)); return; }
+    const txt = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    if (txt) { base.aiDuiding = { concept: txt, model: CFG.ai.model, ts: new Date().toISOString(),
+      label: 'AI-CONCEPT \u2014 automatisch gegenereerd, controleren v\u00f3\u00f3r gebruik richting klant' };
+      log('  ai-duiding: ' + txt.length + ' tekens (concept ter controle)'); }
+  } catch (e) { log('  ai-duiding: FOUT', e.message); }
+}
+
 async function buildForClient(client, templateHtml) {
   const base = extractBase(templateHtml);
   base.meta.client = client.name; base.meta.quarter = periodLabel();
@@ -268,6 +370,7 @@ async function buildForClient(client, templateHtml) {
   for (const fn of sources) { try { const r = await fn(client); if (r) slices.push(r); } catch (e) { log('  bron-fout', client.name, fn.name, e.message); } }
   overlay(base, slices);
   await addTrend(client.id, base);
+  await getAIduiding(base); // AI-duiding op basis van de echte data (concept ter controle)
   return base;
 }
 
@@ -281,7 +384,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-7 · app-only Graph] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-9 · MS-sectie + AI-duiding] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
