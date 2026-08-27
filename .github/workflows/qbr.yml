@@ -25,6 +25,7 @@ jobs:
           MS_REFRESH_TOKEN:  ${{ secrets.MS_REFRESH_TOKEN }}
           FRESHDESK_DOMAIN:  ${{ secrets.FRESHDESK_DOMAIN }}
           FRESHDESK_KEY:     ${{ secrets.FRESHDESK_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DRMM_PLATFORM:     ${{ secrets.DRMM_PLATFORM }}
           DRMM_KEY:          ${{ secrets.DRMM_KEY }}
           DRMM_SECRET:       ${{ secrets.DRMM_SECRET }}
@@ -35,4 +36,3 @@ jobs:
           ITGLUE_KEY:        ${{ secrets.ITGLUE_KEY }}
           ALERT_WEBHOOK:     ${{ secrets.ALERT_WEBHOOK }}
         run: node collect_qbr_supabase.mjs
-
