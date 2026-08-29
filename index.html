@@ -222,6 +222,14 @@ tbody tr:last-child td{border-bottom:0}
   .hero::after{display:none}.card,.road-row,.tile{box-shadow:none}
   .bar > span,.col .bar-v{transition:none}
 }
+@media print {
+  .qbrbar, .noprint, #qbrLogin, #qbrNewPw { display:none !important; }
+  body { background:#fff !important; }
+  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .card, .panel, .note, .tile, section, table { break-inside:avoid; page-break-inside:avoid; }
+  a { text-decoration:none; color:inherit; }
+  @page { margin:14mm; }
+}
 </style>
 </head>
 <body>
@@ -919,8 +927,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -991,6 +999,7 @@ async function boot(){
 async function startApp(){
   // Rol bepalen: staat de gebruiker in msp_members -> manager; anders klant.
   const bar=document.createElement("div");
+  bar.className="qbrbar";
   bar.style.cssText="display:flex;gap:14px;align-items:center;padding:9px 18px;background:#1D1D1B;color:#fff;font:14px/1.2 Inter,'Segoe UI',sans-serif";
   document.body.prepend(bar);
   const st=()=>bar.querySelector("#selStatus");
@@ -1019,8 +1028,10 @@ async function startApp(){
           : '<span id="selName" style="font-weight:600">'+ (clients[0].name||'') +'</span>')
       + '<label>Periode&nbsp;<select id="selPeriod" style="padding:5px 8px;border-radius:6px;border:0"></select></label>'
       + '<span id="selStatus" style="opacity:.7;font-size:12px"></span>'
-      + '<button id="qbrOut" style="margin-left:auto;background:#333;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer">Uitloggen</button>';
+      + '<button id="qbrPrint" class="noprint" style="margin-left:auto;background:#FFC20E;color:#1D1D1B;border:0;border-radius:6px;padding:5px 12px;font-weight:700;cursor:pointer">PDF / Print</button>'
+      + '<button id="qbrOut" style="background:#333;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer">Uitloggen</button>';
     bar.querySelector("#qbrOut").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
+    bar.querySelector("#qbrPrint").addEventListener("click",()=>window.print());
     const selC=bar.querySelector("#selClient"), selP=bar.querySelector("#selPeriod"), nm=bar.querySelector("#selName");
 
     async function loadSnapshot(id){
@@ -1062,12 +1073,15 @@ function initDemo(){
     ]
   };
   const bar=document.createElement("div");
+  bar.className="qbrbar";
   bar.style.cssText="display:flex;gap:14px;align-items:center;padding:9px 18px;background:#1D1D1B;color:#fff;font:14px/1.2 Inter,'Segoe UI',sans-serif";
   bar.innerHTML='<span style="font-weight:700;letter-spacing:.02em">QBR</span>'
     +'<label>Klant&nbsp;<select id="selClient" style="padding:5px 8px;border-radius:6px;border:0"></select></label>'
     +'<label>Periode&nbsp;<select id="selPeriod" style="padding:5px 8px;border-radius:6px;border:0"></select></label>'
-    +'<span style="opacity:.6;font-size:12px;margin-left:auto">demo \u00b7 vul SUPA_URL in voor live data</span>';
+    +'<span style="opacity:.6;font-size:12px;margin-left:auto">demo \u00b7 vul SUPA_URL in voor live data</span>'
+    +'<button id="qbrPrint" class="noprint" style="background:#FFC20E;color:#1D1D1B;border:0;border-radius:6px;padding:5px 12px;font-weight:700;cursor:pointer">PDF / Print</button>';
   document.body.prepend(bar);
+  bar.querySelector("#qbrPrint").addEventListener("click",()=>window.print());
   const selC=bar.querySelector("#selClient"), selP=bar.querySelector("#selPeriod");
   function apply(){
     const per=DEMO[selC.value][selP.selectedIndex]; const d=JSON.parse(JSON.stringify(BASE));

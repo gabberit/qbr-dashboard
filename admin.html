@@ -69,6 +69,12 @@
     <div id="period" class="hint"></div>
   </div>
 
+  <div id="overviewCard" class="card hidden">
+    <h2>Klantenoverzicht</h2>
+    <p class="hint">Klik een klant om die te bewerken. Groen&nbsp;&#10003; = koppeling ingevuld, &mdash; = nog leeg.</p>
+    <div id="ovWrap" style="overflow-x:auto"><div id="ovTable" class="hint">Laden&hellip;</div></div>
+  </div>
+
   <div id="editCard" class="card hidden">
     <h2>Besluiten</h2>
     <p class="hint">Eén besluit per regel. Verschijnt in sectie &laquo;Besluiten &amp; acties&raquo;.</p>
@@ -145,8 +151,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -164,13 +170,66 @@ async function doLogin(){
 }
 async function doLogout(){ await sb.auth.signOut(); }
 
-function onSession(session){
-  const inApp = !!session;
-  show($('loginCard'), !inApp); show($('appCard'), inApp); show($('editCard'), inApp);
-  show($('accessCard'), inApp); show($('connCard'), inApp);
-  show($('logout'), inApp);
-  $('who').textContent = session ? session.user.email : '';
-  if(inApp){ loadClients(); initAccess(); }
+async function onSession(session){
+  if(!session){
+    show($('loginCard'), true);
+    ['appCard','editCard','accessCard','connCard','overviewCard','logout'].forEach(id=>show($(id), false));
+    $('who').textContent=''; return;
+  }
+  // Alleen managers (lid van een MSP) mogen het admin-paneel in.
+  const { data: msp, error } = await sb.from('msp_members').select('msp_id').limit(1);
+  const isManager = !error && msp && msp.length;
+  if(!isManager){
+    await sb.auth.signOut();
+    ['appCard','editCard','accessCard','connCard','overviewCard','logout'].forEach(id=>show($(id), false));
+    show($('loginCard'), true);
+    msg($('loginMsg'),'Dit beheerpaneel is alleen voor Fivespark-beheerders. Dit account heeft geen toegang.',false);
+    return;
+  }
+  ['appCard','editCard','accessCard','connCard','overviewCard','logout'].forEach(id=>show($(id), true));
+  show($('loginCard'), false);
+  $('who').textContent = session.user.email;
+  loadClients(); initAccess(); loadOverview();
+}
+
+/* ---- Klantenoverzicht ---- */
+const OV_SOURCES = [
+  ['tenant_id','Microsoft'], ['freshdesk_company','Freshdesk'], ['itglue_org','IT Glue'],
+  ['grc_client','GRC'], ['datto_site','Datto'], ['rocketcyber_customer','RocketCyber'], ['bullphish_org','Awareness']
+];
+function selectClient(id){
+  $('client').value = id; loadSnapshot(id); loadConnections(id);
+  document.getElementById('editCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+async function loadOverview(){
+  const cols = 'id,name,'+OV_SOURCES.map(s=>s[0]).join(',');
+  const { data: cl, error } = await sb.from('clients').select(cols).order('name');
+  if(error){ $('ovTable').textContent = 'Kan overzicht niet laden: '+error.message; return; }
+  if(!cl || !cl.length){ $('ovTable').textContent = 'Nog geen klanten.'; return; }
+  // Laatste periode per klant (één lichte query, zonder de zware data-kolom)
+  const { data: snaps } = await sb.from('qbr_snapshots').select('client,quarter,generated_at')
+    .eq('status','published').order('generated_at',{ascending:false});
+  const last = {};
+  (snaps||[]).forEach(s=>{ if(!last[s.client]) last[s.client] = (s.generated_at||'').slice(0,7)+' \u00b7 '+(s.quarter||''); });
+  const yes = '<span style="color:#1a7f37;font-weight:700">\u2713</span>';
+  const no  = '<span style="color:#bbb">\u2014</span>';
+  const th = s => `<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #eee;font-size:12px;white-space:nowrap">${s}</th>`;
+  const td = (h,extra='') => `<td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;${extra}">${h}</td>`;
+  let html = '<table style="border-collapse:collapse;width:100%;min-width:720px"><thead><tr>'
+    + th('Klant') + OV_SOURCES.map(s=>th(s[1])).join('') + th('Laatste periode') + '</tr></thead><tbody>';
+  for(const c of cl){
+    html += '<tr class="ovRow" data-id="'+c.id+'" style="cursor:pointer">'
+      + td('<b>'+c.name+'</b>','white-space:nowrap')
+      + OV_SOURCES.map(s=>td((c[s[0]]? yes : no),'text-align:center')).join('')
+      + td(last[c.id] || '<span style="color:#bbb">geen data</span>')
+      + '</tr>';
+  }
+  html += '</tbody></table>';
+  $('ovTable').innerHTML = html;
+  $('ovTable').querySelectorAll('.ovRow').forEach(r=>{
+    r.onmouseenter=()=>r.style.background='#faf7ec'; r.onmouseleave=()=>r.style.background='';
+    r.onclick=()=>selectClient(r.getAttribute('data-id'));
+  });
 }
 
 /* ---- Koppelingen (per klant) ---- */
