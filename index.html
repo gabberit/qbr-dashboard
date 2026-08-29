@@ -694,12 +694,18 @@ document.getElementById("heroWrap").innerHTML = `
   <h1>${D.meta.client}</h1>
   <div class="hero-sub"><b>${D.meta.propositie}</b> &nbsp;·&nbsp; ${D.meta.quarter} (${D.meta.period}) &nbsp;·&nbsp; vCIO: ${D.meta.vcio}</div>
   ${D.meta.badge?`<span class="tag">${D.meta.badge}</span>`:''}
-  <div class="score">${D.scorecard.map(k=>`<div class="kpi${ck(k)}"${da(k)}><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div><div class="dl ${k.cls||''}">${k.delta}</div></div>`).join("")}</div>`;
+  <div class="score">${D.scorecard.map(k=>{
+    const real=!!D._sources, ok=!real||(D._kpiFilled||[]).includes(k.det);
+    const clickable = ok && (!real || (D._detailsFilled||[]).includes(k.det)) && k.det;
+    const val = ok ? k.val : '\u2014';
+    const dl = ok ? `<div class="dl ${k.cls||''}">${k.delta||''}</div>` : `<div class="dl c-muted" style="font-size:11px;opacity:.7">geen bron</div>`;
+    return `<div class="kpi${clickable?' clk':''}"${clickable?` data-det="${k.det}"`:''}><div class="lbl">${k.lbl}</div><div class="val">${val}</div>${dl}</div>`;
+  }).join("")}</div>`;
 
 const S=D.service,M=D.mdr,E=D.email,P=D.purview,A=D.awareness,C=D.compliance,R=D.rmm,H=D.hardware,L=D.licenties,RM=D.roadmap,AC=D.acties;
 let html="";
 
-html += `<section class="section" style="border-bottom:1px solid var(--line)"><div class="note"><h4>Kernboodschap</h4><p style="font-size:14.5px">${D.kern}</p></div></section>`;
+if(!D._sources && D.kern) html += `<section class="section" style="border-bottom:1px solid var(--line)"><div class="note"><h4>Kernboodschap</h4><p style="font-size:14.5px">${D.kern}</p></div></section>`;
 
 // "nog niet gekoppeld"-blok voor secties zonder bron
 const nc = (bron) => `<div style="padding:22px;border:1px dashed var(--line);border-radius:12px;background:var(--ice-2,#EFEFEC);color:var(--muted);font-size:14px;text-align:center">Nog niet gekoppeld${bron?` \u00b7 <b style="color:var(--ink)">${bron}</b>`:''}<div style="font-size:12.5px;opacity:.8;margin-top:4px">Deze sectie vult zich zodra de bron is aangesloten.</div></div>`;
@@ -812,14 +818,38 @@ html += secC(coupled("microsoft"),"licenties","10","Microsoft licenties — verb
   </div>
   ${L.saving?`<div class="save-banner"><span class="s1">${L.saving.s1||""}</span><span class="s2">${L.saving.s2||""}</span></div>`:``}`);
 
-html += sec("roadmap","11","Roadmap &amp; advies",RM.src,`
-  <div class="road">${RM.items.map(r=>`<div class="road-row"><span class="pill ${r.cls}">${r.pill}</span><p>${r.text}</p></div>`).join("")}</div>`);
+if (D._sources) {
+  // Echte modus: roadmap = AI-suggesties + handmatige items (uit admin); anders leeg.
+  const ai = (D.aiRoadmap||[]).map(t=>`<div class="road-row"><span class="pill" style="background:var(--brand-tint,#FFF7E0);color:var(--ink);border:1px solid var(--brand,#FFC20E)">AI-suggestie</span><p>${t}</p></div>`);
+  const man = (D.roadmapManual||[]).map(t=>`<div class="road-row"><span class="pill" style="background:var(--ink);color:#fff">Fivespark</span><p>${t}</p></div>`);
+  const items = (ai.length||man.length)
+    ? `<div class="road">${man.join("")}${ai.join("")}</div>${ai.length?`<p class="cap" style="text-align:left;margin-top:10px">AI-suggesties automatisch voorgesteld op basis van de cijfers · ter bespreking.</p>`:``}`
+    : `<div style="padding:18px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:14px">Nog geen roadmap-items · vul aan via het admin-paneel of bespreek in de QBR.</div>`;
+  html += sec("roadmap","11","Roadmap &amp; advies","",items);
 
-html += sec("acties","12","Besluiten &amp; acties","",`
-  <div class="closing">
-    <div>${tbl(["Actie","Eigenaar","Termijn"],AC.rows.map(r=>r.map(c=>({t:c,cls:""}))))}</div>
-    <div class="oneliner"><h4>In één zin</h4><p>${AC.oneliner}</p></div>
-  </div>`);
+  // Besluiten & acties: uit admin-paneel; anders "nog in te vullen".
+  const bes = (D.besluiten||[]);
+  const rows = (D.acties?.rows||[]);
+  const one = D.acties?.oneliner || '';
+  const heeft = bes.length || rows.length || one;
+  const body = heeft ? `<div class="closing">
+      <div>
+        ${bes.length?`<h3>Besluiten</h3><ul style="margin:6px 0 16px;padding-left:18px">${bes.map(b=>`<li style="margin:4px 0">${b}</li>`).join("")}</ul>`:``}
+        ${rows.length?tbl(["Actie","Eigenaar","Termijn"],rows.map(r=>r.map(c=>({t:c,cls:""})))):``}
+      </div>
+      ${one?`<div class="oneliner"><h4>In één zin</h4><p>${one}</p></div>`:``}
+    </div>`
+    : `<div style="padding:18px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:14px">Nog in te vullen · leg besluiten en acties vast via het admin-paneel of in de QBR.</div>`;
+  html += sec("acties","12","Besluiten &amp; acties","",body);
+} else {
+  html += sec("roadmap","11","Roadmap &amp; advies",RM.src,`
+    <div class="road">${RM.items.map(r=>`<div class="road-row"><span class="pill ${r.cls}">${r.pill}</span><p>${r.text}</p></div>`).join("")}</div>`);
+  html += sec("acties","12","Besluiten &amp; acties","",`
+    <div class="closing">
+      <div>${tbl(["Actie","Eigenaar","Termijn"],AC.rows.map(r=>r.map(c=>({t:c,cls:""}))))}</div>
+      <div class="oneliner"><h4>In één zin</h4><p>${AC.oneliner}</p></div>
+    </div>`);
+}
 
 html += `<footer class="site-foot"><span>Fivespark · ${D.meta.propositie} — Quarterly Business Review</span><span>${D.meta.client} · ${D.meta.quarter} · Volgende QBR: ${D.meta.next}</span></footer>`;
 
@@ -830,6 +860,10 @@ runAnims();
 /* ---- modal / drill-down ---- */
 const back=document.getElementById("modalBack"), mT=document.getElementById("mTitle"), mS=document.getElementById("mSrc"), mB=document.getElementById("mBody");
 function openDetail(key){
+  if(D._sources && !(D._detailsFilled||[]).includes(key)){
+    mT.textContent="Geen data"; mS.textContent=""; mB.innerHTML='<p style="color:var(--muted)">Voor dit onderdeel is nog geen bron gekoppeld.</p>';
+    back.classList.add("open"); document.body.style.overflow="hidden"; return;
+  }
   const d=DET[key]; if(!d) return;
   mT.textContent=d.title; mS.textContent=d.src||"";
   let b=""; if(d.lead) b+=`<p class="lead">${d.lead}</p>`;
@@ -861,8 +895,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 
 /* ---- Supabase: maandelijkse snapshots — intern of klantgericht ---- */
 const QBR_MODE  = "intern"; // "intern" = kies klant + periode  |  "klant" = alleen periode (per-klant RLS-token)
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (alleen-lezen; RLS beschermt de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (alleen-lezen; RLS beschermt de data)
 const sHead = () => ({ apikey: SUPA_ANON, Authorization: "Bearer " + SUPA_ANON });
 async function sget(path){ const r=await fetch(SUPA_URL+"/rest/v1/"+path,{headers:sHead()}); if(!r.ok) throw new Error(r.status); return r.json(); }
 async function initSelectors(){
