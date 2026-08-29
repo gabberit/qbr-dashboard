@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QBR · Slimme Werkplek · Fivespark</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!--
   ============================================================================
   FIVESPARK — QBR-TEMPLATE met doorklik-details  (Slimme Werkplek)
@@ -917,40 +918,100 @@ const spy=new IntersectionObserver(es=>{es.forEach(e=>{ if(e.isIntersecting){lin
 document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
-/* ---- Supabase: maandelijkse snapshots — intern of klantgericht ---- */
-const QBR_MODE  = "intern"; // "intern" = kies klant + periode  |  "klant" = alleen periode (per-klant RLS-token)
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (alleen-lezen; RLS beschermt de data)
-const sHead = () => ({ apikey: SUPA_ANON, Authorization: "Bearer " + SUPA_ANON });
-async function sget(path){ const r=await fetch(SUPA_URL+"/rest/v1/"+path,{headers:sHead()}); if(!r.ok) throw new Error(r.status); return r.json(); }
-async function initSelectors(){
-  const klant = QBR_MODE==="klant";
+/* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
+let sb = null;
+
+function loginOverlay(msg){
+  const o=document.createElement("div");
+  o.id="qbrLogin";
+  o.style.cssText="position:fixed;inset:0;z-index:9999;background:#1D1D1B;display:flex;align-items:center;justify-content:center;font:15px/1.4 Inter,'Segoe UI',sans-serif";
+  o.innerHTML='<div style="background:#fff;border-radius:14px;padding:34px 32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4)">'
+    +'<div style="font-weight:800;font-size:20px;letter-spacing:.02em;margin-bottom:2px">QBR-portaal</div>'
+    +'<div style="color:#6b6b6b;font-size:13px;margin-bottom:20px">Log in om uw rapportage te bekijken.</div>'
+    +'<input id="qbrEmail" type="email" placeholder="E-mailadres" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px">'
+    +'<input id="qbrPass" type="password" placeholder="Wachtwoord" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px">'
+    +'<button id="qbrLoginBtn" style="width:100%;padding:12px;border:0;border-radius:8px;background:#FFC20E;color:#1D1D1B;font-weight:700;cursor:pointer">Inloggen</button>'
+    +'<div id="qbrLoginMsg" style="color:#C0392B;font-size:12.5px;margin-top:12px;min-height:16px">'+(msg||'')+'</div></div>';
+  document.body.appendChild(o);
+  const btn=o.querySelector("#qbrLoginBtn"), em=o.querySelector("#qbrEmail"), pw=o.querySelector("#qbrPass"), ms=o.querySelector("#qbrLoginMsg");
+  async function doLogin(){
+    btn.disabled=true; ms.textContent="Bezig met inloggen\u2026";
+    const { error } = await sb.auth.signInWithPassword({ email: em.value.trim(), password: pw.value });
+    if(error){ ms.textContent="Inloggen mislukt: "+error.message; btn.disabled=false; return; }
+    o.remove(); startApp();
+  }
+  btn.addEventListener("click", doLogin);
+  pw.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+}
+
+async function boot(){
+  if(!(SUPA_URL && SUPA_ANON)){ initDemo(); return; }   // geen config -> demo
+  sb = window.supabase.createClient(SUPA_URL, SUPA_ANON);
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ loginOverlay(); return; }
+  startApp();
+}
+
+async function startApp(){
+  // Rol bepalen: staat de gebruiker in msp_members -> manager; anders klant.
   const bar=document.createElement("div");
   bar.style.cssText="display:flex;gap:14px;align-items:center;padding:9px 18px;background:#1D1D1B;color:#fff;font:14px/1.2 Inter,'Segoe UI',sans-serif";
-  bar.innerHTML='<span style="font-weight:700;letter-spacing:.02em">QBR</span>'
-    + (klant ? '<span id="selName" style="font-weight:600"></span>'
-             : '<label>Klant&nbsp;<select id="selClient" style="padding:5px 8px;border-radius:6px;border:0"></select></label>')
-    + '<label>Periode&nbsp;<select id="selPeriod" style="padding:5px 8px;border-radius:6px;border:0"></select></label>'
-    + '<span id="selStatus" style="opacity:.7;font-size:12px"></span>';
   document.body.prepend(bar);
-  const selC=bar.querySelector("#selClient"), selP=bar.querySelector("#selPeriod"), st=bar.querySelector("#selStatus"), nm=bar.querySelector("#selName");
-  async function loadSnapshot(id){ st.textContent="laden\u2026"; const a=await sget("qbr_snapshots?id=eq."+id+"&select=data"); QBR_DATA=a[0].data; renderDashboard(); if(nm&&QBR_DATA.meta) nm.textContent=QBR_DATA.meta.client; st.textContent=""; }
-  async function loadPeriods(){
-    const cf = klant ? "" : "client=eq."+selC.value+"&";
-    const s=await sget("qbr_snapshots?"+cf+"status=eq.published&order=generated_at.desc&limit=24&select=id,quarter,generated_at");
-    selP.innerHTML=s.map(x=>'<option value="'+x.id+'">'+(x.generated_at||'').slice(0,7)+' \u00b7 '+(x.quarter||'')+'</option>').join("");
-    if(s.length) await loadSnapshot(selP.value); else st.textContent="geen data";
-  }
-  selP.addEventListener("change",()=>loadSnapshot(selP.value));
+  const st=()=>bar.querySelector("#selStatus");
   try{
-    if(klant){ await loadPeriods(); }
-    else{
-      const cl=await sget("clients?select=id,name&order=name");
-      selC.innerHTML=cl.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join("");
-      selC.addEventListener("change",loadPeriods);
-      await loadPeriods();
+    const { data: msp } = await sb.from("msp_members").select("msp_id").limit(1);
+    const isManager = !!(msp && msp.length);
+    let clients=[];
+    if(isManager){
+      const { data } = await sb.from("clients").select("id,name").order("name");
+      clients = data||[];
+    } else {
+      const { data: cm } = await sb.from("client_members").select("client_id");
+      const ids=(cm||[]).map(r=>r.client_id);
+      if(ids.length){ const { data } = await sb.from("clients").select("id,name").in("id",ids); clients=data||[]; }
     }
-  }catch(e){ st.textContent="fout: "+e.message; renderDashboard(); }
+    if(!clients.length){
+      bar.innerHTML='<span style="font-weight:700">QBR</span><span style="opacity:.85">Geen rapportage gekoppeld aan dit account.</span>'
+        +'<button id="qbrOut" style="margin-left:auto;background:#333;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer">Uitloggen</button>';
+      bar.querySelector("#qbrOut").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
+      renderDashboard(); return;
+    }
+    // Balk opbouwen: manager krijgt klantkeuze, klant ziet alleen eigen naam.
+    bar.innerHTML='<span style="font-weight:700;letter-spacing:.02em">QBR</span>'
+      + (isManager
+          ? '<label>Klant&nbsp;<select id="selClient" style="padding:5px 8px;border-radius:6px;border:0"></select></label>'
+          : '<span id="selName" style="font-weight:600">'+ (clients[0].name||'') +'</span>')
+      + '<label>Periode&nbsp;<select id="selPeriod" style="padding:5px 8px;border-radius:6px;border:0"></select></label>'
+      + '<span id="selStatus" style="opacity:.7;font-size:12px"></span>'
+      + '<button id="qbrOut" style="margin-left:auto;background:#333;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer">Uitloggen</button>';
+    bar.querySelector("#qbrOut").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
+    const selC=bar.querySelector("#selClient"), selP=bar.querySelector("#selPeriod"), nm=bar.querySelector("#selName");
+
+    async function loadSnapshot(id){
+      st().textContent="laden\u2026";
+      const { data, error } = await sb.from("qbr_snapshots").select("data").eq("id",id).single();
+      if(error){ st().textContent="fout: "+error.message; return; }
+      QBR_DATA=data.data; renderDashboard();
+      if(nm && QBR_DATA.meta) nm.textContent=QBR_DATA.meta.client;
+      st().textContent="";
+    }
+    async function loadPeriods(clientId){
+      const { data:s } = await sb.from("qbr_snapshots").select("id,quarter,generated_at")
+        .eq("client",clientId).eq("status","published").order("generated_at",{ascending:false}).limit(24);
+      selP.innerHTML=(s||[]).map(x=>'<option value="'+x.id+'">'+(x.generated_at||'').slice(0,7)+' \u00b7 '+(x.quarter||'')+'</option>').join("");
+      if(s&&s.length) await loadSnapshot(selP.value); else st().textContent="geen data";
+    }
+    selP.addEventListener("change",()=>loadSnapshot(selP.value));
+    if(isManager){
+      selC.innerHTML=clients.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join("");
+      selC.addEventListener("change",()=>loadPeriods(selC.value));
+      await loadPeriods(selC.value);
+    } else {
+      await loadPeriods(clients[0].id);
+    }
+  }catch(e){ bar.innerHTML='<span style="font-weight:700">QBR</span><span>fout: '+e.message+'</span>'; renderDashboard(); }
 }
 function initDemo(){
   // Zichtbare demo van de klant/periode-keuze zonder live hub. Vul SUPA_URL/ANON in voor de echte data.
@@ -987,7 +1048,7 @@ function initDemo(){
   selC.addEventListener("change",fillPeriods); selP.addEventListener("change",apply);
   fillPeriods();
 }
-if (SUPA_URL && SUPA_ANON) initSelectors(); else initDemo();
+if (SUPA_URL && SUPA_ANON) boot(); else initDemo();
 </script>
 </body>
 </html>
