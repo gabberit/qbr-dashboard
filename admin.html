@@ -71,6 +71,10 @@
     <label style="margin-top:20px">In één zin (samenvatting)</label>
     <input id="oneliner" placeholder="De basis staat; focus komend kwartaal op licentie-optimalisatie.">
 
+    <h2 style="margin-top:22px">Hardware</h2>
+    <p class="hint">Gemiddelde vervangingsprijs per toestel voor deze klant (€). Gebruikt voor de geïndiceerde vervangingsinvestering (aantal end-of-life × prijs).</p>
+    <input id="replacePrice" type="number" min="0" step="10" placeholder="bijv. 950">
+
     <h2 style="margin-top:22px">Extra roadmap-items (handmatig)</h2>
     <p class="hint">Eén per regel. Komt naast de AI-suggesties, met label &laquo;Fivespark&raquo;.</p>
     <textarea id="roadmap" placeholder="Wifi-refresh magazijn&#10;Awareness-training Q4"></textarea>
@@ -82,8 +86,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -126,6 +130,7 @@ async function loadSnapshot(clientId){
   const d = cur.data || {};
   $('besluiten').value = (d.besluiten||[]).join('\n');
   $('oneliner').value = d.acties?.oneliner || '';
+  $('replacePrice').value = (d.replacePrice != null ? d.replacePrice : '');
   $('roadmap').value = (d.roadmapManual||[]).join('\n');
   renderActions(d.acties?.rows || []);
 }
@@ -154,6 +159,8 @@ async function doSave(){
   d.besluiten = $('besluiten').value.split('\n').map(s=>s.trim()).filter(Boolean);
   d.roadmapManual = $('roadmap').value.split('\n').map(s=>s.trim()).filter(Boolean);
   d.acties = { rows: collectActions(), oneliner: $('oneliner').value.trim() };
+  const rp = parseFloat($('replacePrice').value);
+  d.replacePrice = isNaN(rp) ? null : rp;
   const { error } = await sb.from('qbr_snapshots').update({ data:d }).eq('id', cur.id);
   if(error) msg($('saveMsg'),'Opslaan mislukt: '+error.message,false);
   else { cur.data = d; msg($('saveMsg'),'Opgeslagen. Het dashboard toont dit bij de gekozen periode.',true); }

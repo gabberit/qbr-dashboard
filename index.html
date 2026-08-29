@@ -799,16 +799,40 @@ html += secC(coupled("rmm"),"rmm","08","Health &amp; patch — Kaseya RMM",R.src
   <div class="card">${tbl(["Onderdeel","Status","Detail"],R.table)}</div>
   <p class="cap" style="text-align:left;margin-top:14px;color:var(--brand-dk)">${R.cap}</p>`);
 
-html += secC(coupled("hardware"),"hardware","09","Hardware lifecycle — van top tot teen",H.src,`
-  <div class="card clk" data-det="${H.eolDet}">${tbl(["Categorie","Aantal","Gem. leeftijd","End-of-life","Advies"],H.table)}</div>
-  <div class="grid2" style="margin-top:18px">
-    <div class="tile" style="padding:20px 22px">
-      <div class="lbl" style="min-height:auto">Vervangingsbudget — komende 12 mnd</div>
-      <div class="val" style="font-size:34px;color:var(--brand-dk)">${H.budget}</div>
-      <p class="cap" style="text-align:left;margin-top:8px">${H.budgetNote}</p>
-    </div>
-    <div class="note"><h4>${H.apTitle}</h4><p style="font-size:13.5px">${H.apNote}</p></div>
-  </div>`);
+if (D._sources) {
+  // Echte modus: hardware uit IT Glue (_hardware) + geïndiceerde vervangingsinvestering (admin-prijs).
+  if (D._hardware) {
+    const tot = D._hardware.total ?? 0, eol = D._hardware.eol ?? 0;
+    const prijs = (D.replacePrice != null && !isNaN(D.replacePrice)) ? Number(D.replacePrice) : null;
+    const invest = (prijs != null) ? eol * prijs : null;
+    const fmt = n => '\u20AC ' + Math.round(n).toLocaleString('nl-NL');
+    const investBlok = prijs != null
+      ? `<div class="tile" style="padding:20px 22px"><div class="lbl" style="min-height:auto">Geïndiceerde vervangingsinvestering</div>
+           <div class="val" style="font-size:34px;color:var(--brand-dk)">± ${fmt(invest)}</div>
+           <p class="cap" style="text-align:left;margin-top:8px">${eol} toestel(len) end-of-life × ${fmt(prijs)} gemiddeld · indicatie, geen offerte.</p></div>`
+      : `<div class="note"><h4>Vervangingsinvestering</h4><p style="font-size:13.5px">Stel de gemiddelde vervangingsprijs per toestel in via het admin-paneel om de indicatie te tonen.</p></div>`;
+    html += sec("hardware","09","Hardware lifecycle","Bron: IT Glue \u00b7 CMDB",`
+      <div class="tiles c5">
+        <div class="tile"><div class="lbl">Assets totaal</div><div class="val">${tot}</div></div>
+        <div class="tile"><div class="lbl">End-of-life</div><div class="val ${eol>0?'c-danger':'c-success'}">${eol}</div></div>
+        <div class="tile"><div class="lbl">EOL-aandeel</div><div class="val">${tot?Math.round(eol/tot*100):0}%</div></div>
+      </div>
+      <div class="grid2" style="margin-top:18px">${investBlok}</div>`);
+  } else {
+    html += sec("hardware","09","Hardware lifecycle","",`<div style="padding:18px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:14px">Nog niet gekoppeld \u00b7 <b style="color:var(--ink)">IT Glue \u00b7 CMDB</b><div style="font-size:12.5px;opacity:.8;margin-top:4px">Deze sectie vult zich zodra de bron is aangesloten.</div></div>`);
+  }
+} else {
+  html += secC(coupled("hardware"),"hardware","09","Hardware lifecycle — van top tot teen",H.src,`
+    <div class="card clk" data-det="${H.eolDet}">${tbl(["Categorie","Aantal","Gem. leeftijd","End-of-life","Advies"],H.table)}</div>
+    <div class="grid2" style="margin-top:18px">
+      <div class="tile" style="padding:20px 22px">
+        <div class="lbl" style="min-height:auto">Vervangingsbudget — komende 12 mnd</div>
+        <div class="val" style="font-size:34px;color:var(--brand-dk)">${H.budget}</div>
+        <p class="cap" style="text-align:left;margin-top:8px">${H.budgetNote}</p>
+      </div>
+      <div class="note"><h4>${H.apTitle}</h4><p style="font-size:13.5px">${H.apNote}</p></div>
+    </div>`);
+}
 
 html += secC(coupled("microsoft"),"licenties","10","Microsoft licenties — verbruik &amp; optimalisatie",L.src,`
   <div class="tiles c5">${(L.stats||[]).map(tile).join("")}</div>
@@ -895,8 +919,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 
 /* ---- Supabase: maandelijkse snapshots — intern of klantgericht ---- */
 const QBR_MODE  = "intern"; // "intern" = kies klant + periode  |  "klant" = alleen periode (per-klant RLS-token)
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (alleen-lezen; RLS beschermt de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (alleen-lezen; RLS beschermt de data)
 const sHead = () => ({ apikey: SUPA_ANON, Authorization: "Bearer " + SUPA_ANON });
 async function sget(path){ const r=await fetch(SUPA_URL+"/rest/v1/"+path,{headers:sHead()}); if(!r.ok) throw new Error(r.status); return r.json(); }
 async function initSelectors(){
