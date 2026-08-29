@@ -306,7 +306,7 @@ function overlay(base, slices) {
     if (s.mdr?.socHandled) tile(base.mdr?.stats, 'soc-incidenten', s.mdr.socHandled);
     if (s.mdr?.p1) tile(base.mdr?.stats, 'kritieke', s.mdr.p1);
     if (s.rmm?.backupNote && base.rmm?.stats) { const t = base.rmm.stats.find(x => (x.lbl || '').toLowerCase().includes('back-up')); if (t) t.delta = s.rmm.backupNote; }
-    if (s.hardware && base.hardware) { /* map naar hardware-sectie indien aanwezig */ }
+    if (s.hardware && base.hardware) { base._hardware = s.hardware; }
     if (s.licentiesFull) { base.licenties = s.licentiesFull;
       if (s.inactCount != null) { const t = base.licenties.stats.find(x => x.det === 'licInactive'); if (t) { t.val = String(s.inactCount); t.valCls = s.inactCount > 0 ? 'c-danger' : 'c-muted'; } } }
     if (s.details) base.details = { ...base.details, ...s.details };
@@ -328,39 +328,120 @@ async function addTrend(clientId, base) {
 
 /* === PER KLANT ========================================================== */
 const periodLabel = (d = new Date()) => `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+/* =====================================================================
+ *  INSTELBAAR KADER — door Fivespark te toetsen (concept)
+ *  Pas deze twee blokken aan naar jullie eigen interpretatie.
+ * ===================================================================== */
+const LICENTIE_BASELINE = [
+  'Meer dan 300 gebruikers: adviseer Microsoft 365 E3 of E5 (feature-afhankelijk).',
+  '300 of minder: adviseer Microsoft 365 Business Premium, aangevuld met Defender for Business en Purview.',
+];
+// NIS2 zorgplicht — alleen het TECHNISCH MEETBARE deel; organisatorische eisen blijven handmatig.
+const NIS2_MAP = [
+  'Kwetsbaarhedenbeheer  <- patch-compliance (Datto RMM)',
+  'Continuiteit & herstel <- back-up/BCDR-status (Datto BCDR)',
+  'Detectie & respons     <- MDR-dekking (RocketCyber)',
+  'Toegangsbeveiliging    <- MFA & Conditional Access (Entra ID / Graph)',
+  'Cyberhygiene & training <- phishing-awareness (BullPhish/K365)',
+  'Organisatorisch (risicobeleid, toeleveringsketen, effectiviteitsmeting): NIET automatisch beoordelen.',
+];
+// Service/tickets — bekende "categorie -> oplossing"-patronen (uitbreidbaar, te toetsen door Fivespark).
+const TICKET_PATRONEN = [
+  'Wachtwoord/MFA-tickets  -> self-service password reset (SSPR) in Entra ID.',
+  'Printen/Printix-tickets -> Printix-uitrol of printerbeheer herzien.',
+  'Outlook/e-mail-tickets  -> Outlook-profiel-/mailboxbeheer, cache-instellingen.',
+  'Teams/vergader-tickets  -> randapparatuurcheck, Teams Rooms-standaardisatie.',
+  'Wifi/netwerk-tickets    -> access point-dekking / netwerkmonitoring nalopen.',
+];
+// CMDB & hardware-lifecycle — bekende patronen (uitbreidbaar, te toetsen door Fivespark).
+const LIFECYCLE_PATRONEN = [
+  'Toestellen buiten garantie / end-of-life -> vervangingsplan opstellen, koppelen aan refresh-cyclus.',
+  'Hoge gemiddelde leeftijd van werkplekken -> gefaseerde hardware-refresh (bv. 4-jaars cyclus).',
+  'Onbekende/niet-geregistreerde assets in CMDB -> inventarisatie opschonen; CMDB-hygiene verhogen.',
+  'Verouderde OS-versies op assets -> upgradeplan i.v.m. support-einde en NIS2-kwetsbaarhedenbeheer.',
+];
+
 async function getAIduiding(base) {
-  if (!CFG.ai.key) return; // geen key -> geen duiding (Optie A)
-  // Alleen ECHTE, aanwezige cijfers meesturen; niets verzinnen.
+  if (!CFG.ai.key) return; // geen key -> geen duiding
+  const kpiFilled = base._kpiFilled || [];
+  const meting = {};
+  for (const k of (base.scorecard || [])) if (k.det && kpiFilled.includes(k.det)) meting[k.lbl] = k.val;
+  const purchased = Number((base.licenties?.stats?.find(s => s.lbl === 'Aangeschaft') || {}).val) || null;
   const feiten = {
     klant: base.meta?.client, periode: base.meta?.quarter,
-    licenties: base.licenties?.stats?.map(s => ({ [s.lbl]: s.val })),
-    licentietabel: base.licenties?.skus?.map(r => ({ sku: r[0], aangeschaft: r[1], toegewezen: r[2] })),
-    scorecard: base.scorecard?.map(k => ({ [k.lbl]: k.val })),
+    aantal_licenties: purchased,
+    huidige_licenties: base.licenties?.skus?.map(r => r[0]),
+    gekoppelde_bronnen: Object.keys(base._sources || {}),
+    metingen: meting,
+    top_tickets: (base._sources?.service && base.service?.tickets?.length)
+      ? base.service.tickets.map(r => ({ categorie: r[0], aantal: r[1] })) : null,
+    cmdb_lifecycle: (base._sources?.hardware && base._hardware)
+      ? { assets_totaal: base._hardware.total, buiten_garantie_eol: base._hardware.eol } : null,
   };
   const NONE = 'GEEN_DUIDING';
   const system = [
-    'Je bent een IT-/security-analist die een korte QBR-duiding schrijft voor een MSP (Fivespark), die richting de KLANT gaat.',
-    'STRIKTE REGELS:',
-    `1. Twijfel je ook maar iets, of dekken de cijfers geen zinvolle conclusie? Antwoord dan EXACT: ${NONE} — en niets anders. Bij twijfel ALTIJD ${NONE}.`,
-    '2. Baseer elke uitspraak uitsluitend op de meegegeven cijfers. Verzin NOOIT getallen, percentages, bedragen, trends of bevindingen die niet in de data staan.',
-    '3. Doe alleen een aanbeveling als die rechtstreeks en onweerlegbaar uit de cijfers volgt. Kun je dat niet? Dan geen aanbeveling.',
-    '4. Weinig data (bv. maar 1 licentie, geen trend, ontbrekende bronnen) is normaal een reden voor ' + NONE + '.',
-    '5. Als je wél schrijft: Nederlands, zakelijk, feitelijk, maximaal 3 korte zinnen. Geen slagen om de arm, geen "waarschijnlijk"/"mogelijk". Alleen wat zeker is.',
-    'Liever ' + NONE + ' dan een onzekere uitspraak richting de klant.',
+    'Je bent een IT-/security-analist die een korte QBR-duiding + eventuele licentie-aanbeveling schrijft voor een MSP (Fivespark), gericht aan de KLANT.',
+    '',
+    'HARDE REGELS:',
+    `1. Twijfel je iets, of dekken de cijfers geen zinvolle conclusie? Antwoord dan EXACT: ${NONE} — en niets anders. Bij twijfel ALTIJD ${NONE}.`,
+    '2. Baseer alles uitsluitend op de meegegeven feiten/metingen. Verzin NOOIT getallen, percentages, bedragen of bevindingen.',
+    '3. Doe GEEN uitspraak of de klant wel/niet aan NIS2 "voldoet". Geen compliance-oordeel, geen NIS2-percentage dat niet in de metingen staat.',
+    '4. Beoordeel alleen het TECHNISCH MEETBARE. Organisatorische NIS2-eisen laat je expliciet buiten beschouwing.',
+    '',
+    'FIVESPARK LICENTIE-BASELINE (toepassen op aantal_licenties/huidige_licenties):',
+    ...LICENTIE_BASELINE.map(s => '- ' + s),
+    '',
+    'NIS2 CONCEPT-KADER (te toetsen door Fivespark) — koppel maatregel aan meting:',
+    ...NIS2_MAP.map(s => '- ' + s),
+    '',
+    'AANBEVELING:',
+    '- Blijkt uit aantal_licenties/huidige_licenties dat de baseline niet gehaald wordt? Adviseer de passende upgrade en motiveer met de concrete NIS2-relevante maatregelen die het hogere pakket toevoegt (bv. Conditional Access, Defender for Business, Purview).',
+    '- Kun je de aanbeveling niet onderbouwen uit de gegeven feiten? Dan geen aanbeveling.',
+    '',
+    'SERVICE / TICKETS (alleen als top_tickets aanwezig is):',
+    '- Benoem feitelijk de grootste ticketcategorie(en).',
+    '- Koppel een BEKENDE oplossing uit onderstaande patronen als die past. Beloof NOOIT een aantal bespaarde tickets; noem het hooguit een bekende kandidaat voor reductie.',
+    '- Ken je de oorzaak niet of past geen patroon? Geen service-aanbeveling.',
+    'TICKETPATRONEN (concept, te toetsen door Fivespark):',
+    ...TICKET_PATRONEN.map(s => '- ' + s),
+    '',
+    'CMDB & HARDWARE-LIFECYCLE (alleen als cmdb_lifecycle aanwezig is):',
+    '- Benoem feitelijk het aantal assets en het aantal buiten garantie/end-of-life.',
+    '- Is er een noemenswaardig aantal end-of-life? Koppel een bekend patroon (vervangingsplan/refresh). Beloof GEEN bedragen of exacte planning.',
+    '- Geen cijfers of geen noemenswaardig aantal? Geen lifecycle-aanbeveling.',
+    'LIFECYCLE-PATRONEN (concept, te toetsen door Fivespark):',
+    ...LIFECYCLE_PATRONEN.map(s => '- ' + s),
+    '',
+    'STIJL: Nederlands, zakelijk, feitelijk, maximaal 4 korte zinnen. Geen slagen om de arm ("waarschijnlijk"/"mogelijk"). Alleen wat zeker is. Liever ' + NONE + ' dan onzeker.',
+    '',
+    'UITVOER — antwoord met UITSLUITEND geldige JSON, geen tekst eromheen:',
+    '{"duiding":"<max 4 zinnen; of leeg>","roadmap":["<korte suggestie ter bespreking>", "..."]}',
+    '- roadmap = concrete, uit de feiten afgeleide VOORSTELLEN (upgrade, refresh, SSPR, enz.). Elk item kort. Leeg als niets gedekt is.',
+    '- Roadmap-items zijn SUGGESTIES ter bespreking, nooit besluiten. Genereer NOOIT besluiten of acties (die vult Fivespark handmatig).',
+    '- Dekt niets een conclusie? Antwoord dan uitsluitend het woord ' + NONE + ' (zonder JSON).',
   ].join('\n');
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': CFG.ai.key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: CFG.ai.model, max_tokens: 400, system,
-        messages: [{ role: 'user', content: 'Cijfers (JSON):\n' + JSON.stringify(feiten, null, 0) + '\n\nSchrijf de duiding, of ' + NONE + '.' }] }),
+      body: JSON.stringify({ model: CFG.ai.model, max_tokens: 600, system,
+        messages: [{ role: 'user', content: 'Feiten (JSON):\n' + JSON.stringify(feiten, null, 0) + '\n\nGeef de JSON-uitvoer, of ' + NONE + '.' }] }),
     });
     const j = await r.json();
     if (!r.ok) { log('  ai-duiding: FOUT', r.status, (j.error?.message || '').slice(0, 120)); return; }
-    const txt = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-    if (!txt || txt.includes(NONE)) { log('  ai-duiding: geen duiding (onvoldoende zekerheid)'); return; }
-    base.aiDuiding = { concept: txt, model: CFG.ai.model, ts: new Date().toISOString() };
-    log('  ai-duiding: ' + txt.length + ' tekens (klantzichtbaar)');
+    let txt = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    if (!txt || txt === NONE || (txt.includes(NONE) && !txt.includes('{'))) { log('  ai-duiding: geen duiding (onvoldoende zekerheid)'); return; }
+    // defensief parsen: strip eventuele code-fences, probeer JSON, val terug op platte tekst
+    let duiding = '', roadmap = [];
+    try {
+      const clean = txt.replace(/```json|```/g, '').trim();
+      const o = JSON.parse(clean);
+      duiding = (o.duiding || '').trim();
+      roadmap = Array.isArray(o.roadmap) ? o.roadmap.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : [];
+    } catch { duiding = txt; }             // geen geldige JSON -> hele tekst als duiding
+    if (duiding) base.aiDuiding = { concept: duiding, model: CFG.ai.model, ts: new Date().toISOString() };
+    if (roadmap.length) base.aiRoadmap = roadmap;
+    log(`  ai-duiding: ${duiding ? duiding.length + ' tekens' : 'leeg'}, ${roadmap.length} roadmap-suggestie(s)`);
   } catch (e) { log('  ai-duiding: FOUT', e.message); }
 }
 
@@ -373,6 +454,13 @@ async function buildForClient(client, templateHtml) {
   for (const fn of sources) { try { const r = await fn(client); if (r) { slices.push(r); srcOk[KEY[fn.name]] = true; } } catch (e) { log('  bron-fout', client.name, fn.name, e.message); } }
   overlay(base, slices);
   base._sources = srcOk;                       // welke bronnen leverden data -> dashboard toont "nog niet gekoppeld" voor de rest
+  const kpi = new Set(), det = new Set();
+  for (const s of slices) {
+    if (s.scorecard) Object.keys(s.scorecard).forEach(k => kpi.add(k));
+    if (s.details) Object.keys(s.details).forEach(k => det.add(k));
+  }
+  base._kpiFilled = [...kpi];                   // scorecard-tegels met echte bron
+  base._detailsFilled = [...det];               // doorklik-vensters met echte data
   await addTrend(client.id, base);
   await getAIduiding(base); // AI-duiding op basis van de echte data (conservatief; leeg bij twijfel)
   return base;
@@ -388,7 +476,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-10 · conservatieve AI + lege template] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-15 · roadmap-suggesties] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {

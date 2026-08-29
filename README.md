@@ -17,4 +17,3 @@ Complete repo om de QBR-keten te testen: **Supabase (Postgres) -> GitHub Actions
 5. **Bronnen**: koppel bron voor bron (zie het testplan `QBR_Testopstelling_SQL_GitHub.md`), telkens 1 secret + 1 klant-ID erbij.
 
 > De testdata is synthetisch (verzonnen klanten/cijfers). Zet de repo op privé zodra je met echte klantdata werkt, en scherp de RLS aan voor de klantgerichte modus.
-
