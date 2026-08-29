@@ -126,14 +126,22 @@ async function getMicrosoft(client) {
     log(`  graph lic: ${skus.length} SKU('s), aangeschaft=${purchased} toegewezen=${assigned}`);
   } catch (e) { log('  graph lic: FOUT', e.message); }
 
-  // --- Secure Score + Identity Secure Score ---
+  // --- Secure Score + Identity Secure Score (+ verbeterpunten-drilldown) ---
   try {
     const ss = (await jfetch('https://graph.microsoft.com/v1.0/security/secureScores?$top=1', H)).value?.[0];
     if (ss && ss.maxScore) {
       out.scorecard.secure = Math.round(ss.currentScore / ss.maxScore * 100);
-      const idc = (ss.controlScores || []).filter(c => (c.controlCategory || '').toLowerCase() === 'identity');
+      const cs = ss.controlScores || [];
+      const idc = cs.filter(c => (c.controlCategory || '').toLowerCase() === 'identity');
       if (idc.length) out.scorecard.mfa = Math.round(idc.reduce((n, c) => n + (c.score || 0), 0) / idc.length);
-      log(`  graph secure: ${out.scorecard.secure}% (${ss.currentScore}/${ss.maxScore})`);
+      // Drilldown Secure Score: alle controls (verbeterpunten)
+      const mkRows = list => list.map(c => [c.controlName || c.controlCategory || '\u2014', c.controlCategory || '\u2014',
+        (c.score != null ? String(c.score) : '\u2014'), c.description ? String(c.description).replace(/<[^>]+>/g, '').slice(0, 90) : '\u2014']);
+      if (cs.length) out.details.secure = { title: 'Microsoft Secure Score \u2014 verbeterpunten', src: 'Microsoft Graph',
+        lead: `${out.scorecard.secure}% (${ss.currentScore}/${ss.maxScore})`, cols: ['Maatregel', 'Categorie', 'Score', 'Toelichting'], rows: mkRows(cs.slice(0, 30)) };
+      // Drilldown Identity: alleen identity-controls (voor de Identity Score-tegel, indien geen MFA-lijst beschikbaar)
+      if (idc.length) out._identityRows = mkRows(idc.slice(0, 30));
+      log(`  graph secure: ${out.scorecard.secure}% (${ss.currentScore}/${ss.maxScore}), ${cs.length} controls`);
     } else { log('  graph secure: geen data'); }
   } catch (e) { log('  graph secure: FOUT', e.message); }
 
@@ -160,6 +168,10 @@ async function getMicrosoft(client) {
     if (rows.length) out.details.mfa = { title: 'MFA & sterke authenticatie \u2014 per gebruiker', src: 'Entra ID \u00b7 Graph', cols: ['Gebruiker', 'Afdeling', 'MFA', 'Methode', 'Sterkte'], rows };
     log(`  graph mfa: ${rep.length} registraties`);
   } catch (e) { log('  graph mfa (P1/P2 vereist):', e.message.split('::')[0]); }
+  // Identity-tegel: geen MFA-lijst beschikbaar? Val terug op de identity-verbeterpunten uit Secure Score.
+  if (!out.details.mfa && out._identityRows && out._identityRows.length) {
+    out.details.mfa = { title: 'Identity Secure Score \u2014 verbeterpunten', src: 'Microsoft Graph', cols: ['Maatregel', 'Categorie', 'Score', 'Toelichting'], rows: out._identityRows };
+  }
 
   // --- Defender/Purview-signalen via security alerts (vereist E5/P2; leeg in Basic-tenant) ---
   try {
@@ -476,7 +488,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-15 · roadmap-suggesties] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-16 · secure score drilldown] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
