@@ -100,6 +100,69 @@ const SKU_NAMES = {
 };
 const skuName = p => SKU_NAMES[p] || p;
 
+/* Secure Score — Nederlandse vertaling (uitbreidbaar, te toetsen door Fivespark).
+ * Categorie-namen en de meest voorkomende maatregelen met een heldere uitleg. */
+const SECURE_CAT_NL = { identity: 'Identiteit', data: 'Gegevens', device: 'Apparaten', apps: 'Applicaties', infrastructure: 'Infrastructuur' };
+// sleutel = stuk (lowercase) uit de Microsoft-maatregelnaam -> [NL-naam, NL-uitleg]
+const SECURE_CTRL_NL = {
+  legacyauth: ['Verouderde authenticatie blokkeren', 'Blokkeer oude protocollen (POP/IMAP/SMTP) die MFA omzeilen.'],
+  adminmfa: ['MFA voor beheerders', 'Verplicht meervoudige authenticatie voor alle beheerdersaccounts.'],
+  sspr: ['Self-service wachtwoordherstel', 'Laat gebruikers hun wachtwoord zelf veilig herstellen.'],
+  selfservicepasswordreset: ['Self-service wachtwoordherstel', 'Laat gebruikers hun wachtwoord zelf veilig herstellen.'],
+  mfaregistration: ['MFA-registratie gebruikers', 'Zorg dat alle gebruikers MFA registreren en gebruiken.'],
+  mfa: ['Meervoudige authenticatie (MFA)', 'Inloggen vereist een tweede stap naast het wachtwoord.'],
+  signinrisk: ['Risicogebaseerd inlogbeleid', 'Blokkeer of vraag MFA bij verdachte aanmeldingen.'],
+  userrisk: ['Gebruikersrisicobeleid', 'Grijp in bij accounts met een verhoogd risico.'],
+  conditionalaccess: ['Voorwaardelijke toegang', 'Stel toegangsregels in op basis van gebruiker, apparaat en locatie.'],
+  password: ['Wachtwoordbeleid', 'Voorkom verlopende/zwakke wachtwoorden conform aanbeveling.'],
+  expire: ['Wachtwoorden niet laten verlopen', 'Zet verplicht periodiek wijzigen uit; gebruik MFA i.p.v.'],
+  admin: ['Beheerdersaccounts beperken', 'Houd het aantal beheerders klein en gescheiden van dagelijks gebruik.'],
+  guest: ['Gastaccounts beheren', 'Beperk en beoordeel externe gasttoegang periodiek.'],
+  sharing: ['Extern delen beperken', 'Beperk delen van bestanden buiten de organisatie.'],
+  audit: ['Auditlogboek', 'Zet logging aan zodat activiteiten herleidbaar zijn.'],
+  dlp: ['Gegevensverliespreventie (DLP)', 'Voorkom dat gevoelige gegevens de organisatie verlaten.'],
+  safelink: ['Veilige koppelingen (Defender)', 'Scan links in e-mail op schadelijke bestemmingen.'],
+  safeattach: ['Veilige bijlagen (Defender)', 'Scan e-mailbijlagen in een sandbox voor aflevering.'],
+  antiphish: ['Antiphishingbeleid', 'Bescherm tegen imitatie- en phishingmail.'],
+  phish: ['Antiphishingbeleid', 'Bescherm tegen imitatie- en phishingmail.'],
+  consent: ['App-toestemmingen beheren', 'Beperk welke apps toegang tot data mogen vragen.'],
+  integratedapps: ['App-toestemmingen beheren', 'Beperk welke apps toegang tot data mogen vragen.'],
+  device: ['Apparaatbeheer', 'Beheer en beveilig apparaten via Intune/compliancebeleid.'],
+  defender: ['Microsoft Defender', 'Zet Defender-bescherming voor endpoints/e-mail aan.'],
+};
+const catNL = c => SECURE_CAT_NL[(c.controlCategory || '').toLowerCase()] || c.controlCategory || '\u2014';
+const _ctrlCache = new Map(); // AI-vertalingen binnen de run: naam(lowercase) -> [naam, uitleg]
+const knownNL = name => { const k = (name || '').toLowerCase(); for (const key in SECURE_CTRL_NL) if (k.includes(key)) return SECURE_CTRL_NL[key]; return null; };
+const ctrlNL = c => {
+  const known = knownNL(c.controlName); if (known) return known;                 // bekend -> vaste NL-tabel (gratis)
+  const cached = _ctrlCache.get((c.controlName || '').toLowerCase()); if (cached) return cached; // AI-vertaald deze run
+  const uitleg = c.description ? String(c.description).replace(/<[^>]+>/g, '').slice(0, 120) : '\u2014';
+  return [c.controlName || '\u2014', uitleg];                                     // vangnet: ruwe naam + MS-omschrijving
+};
+// Optie 3: onbekende maatregelen automatisch via Claude vertalen (bekende blijven uit de tabel).
+async function translateControls(controls) {
+  if (!CFG.ai.key) return;
+  const seen = new Set(); const todo = [];
+  for (const c of controls) {
+    const name = c.controlName; if (!name) continue; const lc = name.toLowerCase();
+    if (knownNL(name) || _ctrlCache.has(lc) || seen.has(lc)) continue;
+    seen.add(lc); todo.push({ controlName: name, omschrijving: c.description ? String(c.description).replace(/<[^>]+>/g, '').slice(0, 160) : '' });
+  }
+  if (!todo.length) return;
+  const sys = 'Vertaal Microsoft Secure Score-maatregelen naar begrijpelijk Nederlands voor een klantrapport. Antwoord met UITSLUITEND geldige JSON: een object waarin elke sleutel exact de gegeven controlName is en de waarde {"naam":"<korte NL-naam>","uitleg":"<\u00e9\u00e9n korte zin>"}. Geen tekst eromheen.';
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': CFG.ai.key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: CFG.ai.model, max_tokens: 1500, system: sys, messages: [{ role: 'user', content: JSON.stringify(todo) }] }) });
+    const j = await r.json();
+    if (!r.ok) { log('  secure-vertaling: FOUT', r.status); return; }
+    const txt = (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('').trim().replace(/```json|```/g, '').trim();
+    const o = JSON.parse(txt); let n = 0;
+    for (const k in o) { const v = o[k]; if (v && v.naam) { _ctrlCache.set(k.toLowerCase(), [v.naam, v.uitleg || '\u2014']); n++; } }
+    log(`  secure-vertaling: ${n} maatregel(en) automatisch vertaald`);
+  } catch (e) { log('  secure-vertaling: FOUT', (e.message || '').split('\n')[0]); }
+}
+
 async function getMicrosoft(client) {
   if (!CFG.ms.clientId || !CFG.ms.secret || !client.tenant_id) return null;
   const H = { Authorization: `Bearer ${await msToken(client.tenant_id)}` };
@@ -151,12 +214,14 @@ async function getMicrosoft(client) {
       const cs = ss.controlScores || [];
       const idc = cs.filter(c => (c.controlCategory || '').toLowerCase() === 'identity');
       if (idc.length) out.scorecard.mfa = Math.round(idc.reduce((n, c) => n + (c.score || 0), 0) / idc.length);
-      // Drilldown Secure Score: alle controls (verbeterpunten)
-      const mkRows = list => list.map(c => [c.controlName || c.controlCategory || '\u2014', c.controlCategory || '\u2014',
-        (c.score != null ? String(c.score) : '\u2014'), c.description ? String(c.description).replace(/<[^>]+>/g, '').slice(0, 90) : '\u2014']);
+      // Drilldown Secure Score: alle controls (verbeterpunten) in het Nederlands
+      await translateControls(cs); // onbekende maatregelen automatisch vertalen (optie 3)
+      const mkRows = list => list.map(c => { const [naam, uitleg] = ctrlNL(c);
+        return [naam, catNL(c), (c.score != null ? String(c.score) : '\u2014'), uitleg]; });
       if (cs.length) out.details.secure = { title: 'Microsoft Secure Score \u2014 verbeterpunten', src: 'Microsoft Graph',
-        lead: `${out.scorecard.secure}% (${ss.currentScore}/${ss.maxScore})`, cols: ['Maatregel', 'Categorie', 'Score', 'Toelichting'], rows: mkRows(cs.slice(0, 30)) };
-      // Drilldown Identity: alleen identity-controls (voor de Identity Score-tegel, indien geen MFA-lijst beschikbaar)
+        lead: `Onderdelen die je Secure Score bepalen (${out.scorecard.secure}% \u2014 ${ss.currentScore} van ${ss.maxScore} punten). \u201eScore\u201d = behaalde punten voor die maatregel; een lage score betekent ruimte voor verbetering.`,
+        cols: ['Maatregel', 'Categorie', 'Score', 'Wat het inhoudt'], rows: mkRows(cs.slice(0, 30)) };
+      // Drilldown Identity: alleen identity-controls (voor de Identity Score-tegel)
       if (idc.length) out._identityRows = mkRows(idc.slice(0, 30));
       log(`  graph secure: ${out.scorecard.secure}% (${ss.currentScore}/${ss.maxScore}), ${cs.length} controls`);
     } else { log('  graph secure: geen data'); }
@@ -187,7 +252,9 @@ async function getMicrosoft(client) {
   } catch (e) { log('  graph mfa (P1/P2 vereist):', e.message.split('::')[0]); }
   // Identity-tegel: geen MFA-lijst beschikbaar? Val terug op de identity-verbeterpunten uit Secure Score.
   if (!out.details.mfa && out._identityRows && out._identityRows.length) {
-    out.details.mfa = { title: 'Identity Secure Score \u2014 verbeterpunten', src: 'Microsoft Graph', cols: ['Maatregel', 'Categorie', 'Score', 'Toelichting'], rows: out._identityRows };
+    out.details.mfa = { title: 'Identity Secure Score \u2014 verbeterpunten', src: 'Microsoft Graph',
+      lead: 'Maatregelen rond identiteit en toegang die de Identity Secure Score bepalen. \u201eScore\u201d = behaalde punten; laag = ruimte voor verbetering.',
+      cols: ['Maatregel', 'Categorie', 'Score', 'Wat het inhoudt'], rows: out._identityRows };
   }
 
   // --- Defender/Purview-signalen via security alerts (vereist E5/P2; leeg in Basic-tenant) ---
@@ -515,7 +582,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-18 · licenties per gebruiker] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-20 · AI-vertaling maatregelen] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
