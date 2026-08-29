@@ -104,12 +104,14 @@ async function getMicrosoft(client) {
   if (!CFG.ms.clientId || !CFG.ms.secret || !client.tenant_id) return null;
   const H = { Authorization: `Bearer ${await msToken(client.tenant_id)}` };
   const out = { scorecard: {}, details: {} };
+  const skuMap = {}; // skuId (GUID) -> leesbare naam, voor licenties-per-gebruiker
 
   // --- Licenties: per SKU + totalen ---
   try {
     const skus = (await jfetch('https://graph.microsoft.com/v1.0/subscribedSkus', H)).value || [];
     let purchased = 0, assigned = 0; const rows = [];
     for (const s of skus) {
+      if (s.skuId) skuMap[s.skuId] = skuName(s.skuPartNumber);
       const enabled = s.prepaidUnits?.enabled || 0, used = s.consumedUnits || 0;
       if (!enabled && !used) continue;
       purchased += enabled; assigned += used; const free = enabled - used;
@@ -119,12 +121,27 @@ async function getMicrosoft(client) {
     out.licentiesFull = { src: 'Bron: Entra ID \u00b7 Microsoft Graph', skus: rows,
       stats: [
         { lbl: 'Aangeschaft', val: String(purchased) },
-        { lbl: 'Toegewezen', val: String(assigned), delta: purchased ? Math.round(assigned / purchased * 100) + '%' : '', deltaCls: 'c-muted' },
+        { det: 'licUsers', lbl: 'Toegewezen', val: String(assigned), delta: purchased ? Math.round(assigned / purchased * 100) + '%' : '', deltaCls: 'c-muted' },
         { det: 'licUnused', lbl: 'Ongebruikt', val: String(purchased - assigned), valCls: (purchased - assigned) > 0 ? 'c-warning' : 'c-success' },
         { det: 'licInactive', lbl: 'Inactief > 60d', val: '0', valCls: 'c-muted' },
       ] };
     log(`  graph lic: ${skus.length} SKU('s), aangeschaft=${purchased} toegewezen=${assigned}`);
   } catch (e) { log('  graph lic: FOUT', e.message); }
+
+  // --- Licenties per gebruiker (PERSOONSDATA; assignedLicenses, werkt zonder P1/P2) ---
+  try {
+    const u2 = (await jfetch('https://graph.microsoft.com/v1.0/users?$top=400&$select=displayName,userPrincipalName,department,assignedLicenses', H)).value || [];
+    const rows = [];
+    for (const p of u2) {
+      const lic = (p.assignedLicenses || []).map(l => skuMap[l.skuId] || l.skuId).filter(Boolean);
+      if (!lic.length) continue;
+      rows.push([p.displayName || p.userPrincipalName, p.department || '\u2014', lic.join(', ')]);
+    }
+    if (rows.length) out.details.licUsers = { title: 'Licenties per gebruiker', src: 'Entra ID \u00b7 Graph',
+      lead: '\u26A0 Persoonsdata \u2014 uitsluitend voor intern gebruik. Nog niet per klant afgeschermd; niet delen met de klant tot klant-login actief is.',
+      cols: ['Gebruiker', 'Afdeling', 'Toegekende licenties'], rows: rows.slice(0, 300) };
+    log(`  graph lic/gebruiker: ${rows.length} gebruiker(s) met licentie`);
+  } catch (e) { log('  graph lic/gebruiker: FOUT', e.message.split('::')[0]); }
 
   // --- Secure Score + Identity Secure Score (+ verbeterpunten-drilldown) ---
   try {
@@ -379,12 +396,21 @@ async function getAIduiding(base) {
   const meting = {};
   for (const k of (base.scorecard || [])) if (k.det && kpiFilled.includes(k.det)) meting[k.lbl] = k.val;
   const purchased = Number((base.licenties?.stats?.find(s => s.lbl === 'Aangeschaft') || {}).val) || null;
+  // Context: lage Secure Score deels pakket-gebonden? (huidig pakket zonder P1/P2/E5)
+  const skusTxt = (base.licenties?.skus?.map(r => r[0]) || []).join(' ').toLowerCase();
+  const hasPremium = /premium|e3|e5| p1| p2|ems/.test(skusTxt);
+  const secTile = (base.scorecard || []).find(k => k.det === 'secure');
+  const secureReal = (secTile && kpiFilled.includes('secure')) ? secTile.val : null;
+  const secureCtx = (secureReal && !hasPremium)
+    ? 'Secure Score wordt gemeten t.o.v. alle mogelijke maatregelen, inclusief maatregelen die Entra ID P1/P2 of E5 vereisen. Het huidige pakket bevat die niet, dus een deel van de (lage) score is pakket-gebonden en niet per se een teken van slechte hygiene.'
+    : null;
   const feiten = {
     klant: base.meta?.client, periode: base.meta?.quarter,
     aantal_licenties: purchased,
     huidige_licenties: base.licenties?.skus?.map(r => r[0]),
     gekoppelde_bronnen: Object.keys(base._sources || {}),
     metingen: meting,
+    secure_score_context: secureCtx,
     top_tickets: (base._sources?.service && base.service?.tickets?.length)
       ? base.service.tickets.map(r => ({ categorie: r[0], aantal: r[1] })) : null,
     cmdb_lifecycle: (base._sources?.hardware && base._hardware)
@@ -409,6 +435,7 @@ async function getAIduiding(base) {
     'AANBEVELING:',
     '- Blijkt uit aantal_licenties/huidige_licenties dat de baseline niet gehaald wordt? Adviseer de passende upgrade en motiveer met de concrete NIS2-relevante maatregelen die het hogere pakket toevoegt (bv. Conditional Access, Defender for Business, Purview).',
     '- Kun je de aanbeveling niet onderbouwen uit de gegeven feiten? Dan geen aanbeveling.',
+    '- Is secure_score_context aanwezig? Dan mag je feitelijk toelichten dat een deel van de lage Secure Score pakket-gebonden is (hogere licenties nodig). Beweer NOOIT dat de beveiliging "goed" of "voldoende" is; dat is geen gegeven feit.',
     '',
     'SERVICE / TICKETS (alleen als top_tickets aanwezig is):',
     '- Benoem feitelijk de grootste ticketcategorie(en).',
@@ -488,7 +515,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-16 · secure score drilldown] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-18 · licenties per gebruiker] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
