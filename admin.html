@@ -47,7 +47,18 @@
     <label>Wachtwoord</label>
     <input id="password" type="password" autocomplete="current-password">
     <div style="margin-top:16px"><button id="loginBtn">Inloggen</button></div>
+    <div style="margin-top:10px"><a href="#" id="forgot" style="color:#6b6b6b;font-size:12.5px;text-decoration:underline">Wachtwoord vergeten?</a></div>
     <div id="loginMsg"></div>
+  </div>
+
+  <!-- NIEUW WACHTWOORD (na herstellink) -->
+  <div id="newpwCard" class="card hidden">
+    <h2>Nieuw wachtwoord</h2>
+    <p class="hint">Kies een nieuw wachtwoord voor je account.</p>
+    <input id="np1" type="password" placeholder="Nieuw wachtwoord">
+    <input id="np2" type="password" placeholder="Herhaal wachtwoord" style="margin-top:10px">
+    <div style="margin-top:14px"><button id="npBtn">Opslaan</button></div>
+    <div id="npMsg"></div>
   </div>
 
   <!-- APP -->
@@ -82,12 +93,25 @@
     <div style="margin-top:20px"><button id="saveBtn">Opslaan</button></div>
     <div id="saveMsg"></div>
   </div>
+
+  <div id="accessCard" class="card hidden">
+    <h2>Klant-toegang (login koppelen)</h2>
+    <p class="hint">Maak het account eerst aan in Supabase (Authentication &rarr; Users &rarr; Add user), kopieer de User&nbsp;UID, kies het bedrijf en klik Koppelen. De klant ziet daarna alleen dit bedrijf.</p>
+    <label>Bedrijf</label>
+    <select id="accClient"></select>
+    <label style="margin-top:12px">User UID (uit Supabase &rarr; Authentication &rarr; Users)</label>
+    <input id="accUid" placeholder="bijv. a1b2c3d4-e5f6-...">
+    <div style="margin-top:14px"><button id="linkBtn">Koppelen</button></div>
+    <div id="accMsg"></div>
+    <h2 style="margin-top:22px;font-size:15px">Gekoppelde accounts voor dit bedrijf</h2>
+    <div id="accList" class="hint">—</div>
+  </div>
 </div>
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -108,17 +132,59 @@ async function doLogout(){ await sb.auth.signOut(); }
 function onSession(session){
   const inApp = !!session;
   show($('loginCard'), !inApp); show($('appCard'), inApp); show($('editCard'), inApp);
+  show($('accessCard'), inApp);
   show($('logout'), inApp);
   $('who').textContent = session ? session.user.email : '';
-  if(inApp) loadClients();
+  if(inApp){ loadClients(); initAccess(); }
+}
+
+/* ---- Klant-toegang koppelen ---- */
+async function initAccess(){
+  const { data } = await sb.from('clients').select('id,name').order('name');
+  const list = data || [];
+  $('accClient').innerHTML = list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  $('accClient').onchange = renderLinks;
+  $('linkBtn').onclick = linkAccount;
+  if(list.length) renderLinks();
+}
+async function renderLinks(){
+  const cid = $('accClient').value; if(!cid){ $('accList').textContent='—'; return; }
+  const { data, error } = await sb.from('client_members').select('user_id').eq('client_id', cid);
+  if(error){ $('accList').textContent = 'Kan koppelingen niet laden: '+error.message; return; }
+  if(!data || !data.length){ $('accList').textContent = 'Nog geen accounts gekoppeld aan dit bedrijf.'; return; }
+  $('accList').innerHTML = data.map(r=>
+    `<div style="display:flex;gap:10px;align-items:center;margin:6px 0">
+       <code style="font-size:12px;flex:1;word-break:break-all">${r.user_id}</code>
+       <button class="ghost" data-uid="${r.user_id}" style="padding:4px 10px">Ontkoppelen</button>
+     </div>`).join('');
+  $('accList').querySelectorAll('button[data-uid]').forEach(b=>{
+    b.onclick = ()=>unlinkAccount(cid, b.getAttribute('data-uid'));
+  });
+}
+async function linkAccount(){
+  const cid = $('accClient').value, uid = $('accUid').value.trim();
+  if(!uid){ msg($('accMsg'),'Vul een User UID in.',false); return; }
+  const { error } = await sb.from('client_members').insert({ user_id: uid, client_id: cid });
+  if(error){ msg($('accMsg'), 'Koppelen mislukt: '+error.message, false); return; }
+  $('accUid').value=''; msg($('accMsg'),'Account gekoppeld.',true); renderLinks();
+}
+async function unlinkAccount(cid, uid){
+  const { error } = await sb.from('client_members').delete().eq('client_id', cid).eq('user_id', uid);
+  if(error){ msg($('accMsg'), 'Ontkoppelen mislukt: '+error.message, false); return; }
+  msg($('accMsg'),'Account ontkoppeld.',true); renderLinks();
 }
 
 /* ---- Data ---- */
 async function loadClients(){
   const { data, error } = await sb.from('clients').select('id,name').order('name');
-  if(error){ return; }
-  $('client').innerHTML = (data||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
-  if(data && data.length) loadSnapshot($('client').value);
+  if(error){ $('period').textContent = 'Kan klanten niet laden: '+error.message; return; }
+  if(!data || !data.length){
+    $('client').innerHTML='';
+    $('period').innerHTML = '<span style="color:#C0392B">Je account is nog niet aan een MSP gekoppeld. Voer stap 9 uit in schema_multitenant.sql (koppel je user aan een MSP via msp_members) en log opnieuw in.</span>';
+    return;
+  }
+  $('client').innerHTML = data.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  loadSnapshot($('client').value);
 }
 async function loadSnapshot(clientId){
   const { data, error } = await sb.from('qbr_snapshots')
@@ -166,17 +232,47 @@ async function doSave(){
   else { cur.data = d; msg($('saveMsg'),'Opgeslagen. Het dashboard toont dit bij de gekozen periode.',true); }
 }
 
+/* ---- Wachtwoord vergeten / herstellen ---- */
+async function doForgot(e){
+  if(e) e.preventDefault();
+  if(!sb){ msg($('loginMsg'),'SUPA_URL / SUPA_ANON niet ingevuld.',false); return; }
+  const email=$('email').value.trim();
+  if(!email){ msg($('loginMsg'),'Vul eerst je e-mailadres in, dan sturen we een herstellink.',false); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin+location.pathname });
+  if(error){ msg($('loginMsg'),'Versturen mislukt: '+error.message,false); return; }
+  msg($('loginMsg'),'Herstellink gestuurd naar '+email+' (controleer ook spam).',true);
+}
+function showRecovery(){
+  show($('loginCard'),false); show($('appCard'),false); show($('editCard'),false);
+  show($('accessCard'),false); show($('logout'),false); show($('newpwCard'),true);
+}
+async function doNewPw(){
+  const a=$('np1').value, b=$('np2').value;
+  if(a.length<8){ msg($('npMsg'),'Gebruik minstens 8 tekens.',false); return; }
+  if(a!==b){ msg($('npMsg'),'De wachtwoorden komen niet overeen.',false); return; }
+  const { error } = await sb.auth.updateUser({ password:a });
+  if(error){ msg($('npMsg'),'Opslaan mislukt: '+error.message,false); return; }
+  msg($('npMsg'),'Wachtwoord opgeslagen.',true);
+  show($('newpwCard'),false);
+}
+
 /* ---- Wiring ---- */
 $('loginBtn').onclick = doLogin;
 $('password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+$('forgot').onclick = doForgot;
+$('npBtn').onclick = doNewPw;
 $('logout').onclick = doLogout;
 $('client').onchange = e => loadSnapshot(e.target.value);
 $('addAction').onclick = () => $('acties').appendChild(actionRow());
 $('saveBtn').onclick = doSave;
 
+let _recovery=false;
 if(sb){
-  sb.auth.getSession().then(({data})=>onSession(data.session));
-  sb.auth.onAuthStateChange((_e,session)=>onSession(session));
+  sb.auth.onAuthStateChange((_e,session)=>{
+    if(_e==='PASSWORD_RECOVERY'){ _recovery=true; showRecovery(); return; }
+    if(!_recovery) onSession(session);
+  });
+  sb.auth.getSession().then(({data})=>{ if(!_recovery) onSession(data.session); });
 } else {
   msg($('loginMsg'),'Vul eerst SUPA_URL en SUPA_ANON in bovenaan admin.html.',false);
 }

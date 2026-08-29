@@ -919,8 +919,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -933,9 +933,18 @@ function loginOverlay(msg){
     +'<input id="qbrEmail" type="email" placeholder="E-mailadres" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px">'
     +'<input id="qbrPass" type="password" placeholder="Wachtwoord" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px">'
     +'<button id="qbrLoginBtn" style="width:100%;padding:12px;border:0;border-radius:8px;background:#FFC20E;color:#1D1D1B;font-weight:700;cursor:pointer">Inloggen</button>'
+    +'<div style="text-align:center;margin-top:12px"><a href="#" id="qbrForgot" style="color:#6b6b6b;font-size:12.5px;text-decoration:underline">Wachtwoord vergeten?</a></div>'
     +'<div id="qbrLoginMsg" style="color:#C0392B;font-size:12.5px;margin-top:12px;min-height:16px">'+(msg||'')+'</div></div>';
   document.body.appendChild(o);
   const btn=o.querySelector("#qbrLoginBtn"), em=o.querySelector("#qbrEmail"), pw=o.querySelector("#qbrPass"), ms=o.querySelector("#qbrLoginMsg");
+  o.querySelector("#qbrForgot").addEventListener("click", async (e)=>{
+    e.preventDefault();
+    const email=em.value.trim();
+    if(!email){ ms.style.color="#C0392B"; ms.textContent="Vul eerst uw e-mailadres in, dan sturen we een herstellink."; return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin+location.pathname });
+    if(error){ ms.style.color="#C0392B"; ms.textContent="Versturen mislukt: "+error.message; return; }
+    ms.style.color="#1a7f37"; ms.textContent="Er is een herstellink gestuurd naar "+email+" (controleer ook spam).";
+  });
   async function doLogin(){
     btn.disabled=true; ms.textContent="Bezig met inloggen\u2026";
     const { error } = await sb.auth.signInWithPassword({ email: em.value.trim(), password: pw.value });
@@ -946,9 +955,34 @@ function loginOverlay(msg){
   pw.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
 }
 
+function newPasswordOverlay(){
+  const o=document.createElement("div");
+  o.id="qbrNewPw";
+  o.style.cssText="position:fixed;inset:0;z-index:10000;background:#1D1D1B;display:flex;align-items:center;justify-content:center;font:15px/1.4 Inter,'Segoe UI',sans-serif";
+  o.innerHTML='<div style="background:#fff;border-radius:14px;padding:34px 32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4)">'
+    +'<div style="font-weight:800;font-size:20px;margin-bottom:2px">Nieuw wachtwoord</div>'
+    +'<div style="color:#6b6b6b;font-size:13px;margin-bottom:20px">Kies een nieuw wachtwoord voor uw account.</div>'
+    +'<input id="npw1" type="password" placeholder="Nieuw wachtwoord" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px">'
+    +'<input id="npw2" type="password" placeholder="Herhaal wachtwoord" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px">'
+    +'<button id="npwBtn" style="width:100%;padding:12px;border:0;border-radius:8px;background:#FFC20E;color:#1D1D1B;font-weight:700;cursor:pointer">Opslaan</button>'
+    +'<div id="npwMsg" style="font-size:12.5px;margin-top:12px;min-height:16px"></div></div>';
+  document.body.appendChild(o);
+  const m=o.querySelector("#npwMsg");
+  o.querySelector("#npwBtn").addEventListener("click", async ()=>{
+    const a=o.querySelector("#npw1").value, b=o.querySelector("#npw2").value;
+    if(a.length<8){ m.style.color="#C0392B"; m.textContent="Gebruik minstens 8 tekens."; return; }
+    if(a!==b){ m.style.color="#C0392B"; m.textContent="De wachtwoorden komen niet overeen."; return; }
+    const { error } = await sb.auth.updateUser({ password: a });
+    if(error){ m.style.color="#C0392B"; m.textContent="Opslaan mislukt: "+error.message; return; }
+    m.style.color="#1a7f37"; m.textContent="Wachtwoord opgeslagen. U wordt ingelogd\u2026";
+    setTimeout(()=>{ o.remove(); location.href=location.origin+location.pathname; }, 1200);
+  });
+}
+
 async function boot(){
   if(!(SUPA_URL && SUPA_ANON)){ initDemo(); return; }   // geen config -> demo
   sb = window.supabase.createClient(SUPA_URL, SUPA_ANON);
+  sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY"){ document.getElementById("qbrLogin")?.remove(); newPasswordOverlay(); } });
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){ loginOverlay(); return; }
   startApp();
