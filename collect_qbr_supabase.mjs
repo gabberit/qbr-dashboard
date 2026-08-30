@@ -24,7 +24,7 @@ const CFG = {
   template: process.env.QBR_TEMPLATE || 'QBR_Slimme_Werkplek_Fivespark.html',
   outDir  : process.env.QBR_OUT || '.',
   supa: { url: process.env.SUPA_URL, key: process.env.SUPA_SERVICE_KEY },
-  ms      : { clientId: process.env.MS_CLIENT_ID, secret: process.env.MS_SECRET }, // app-only: geen refresh token nodig
+  ms      : { clientId: process.env.MS_CLIENT_ID, secret: process.env.MS_SECRET, testTenant: process.env.MS_TEST_TENANT }, // app-only; testTenant = vaste test-tenant voor modus 'test'
   dattoRmm: { platform: process.env.DRMM_PLATFORM, key: process.env.DRMM_KEY, secret: process.env.DRMM_SECRET },
   datto   : { pub: process.env.DATTO_PUBLIC_KEY, sec: process.env.DATTO_SECRET_KEY, base: 'https://api.datto.com' },
   rocket  : { base: process.env.ROCKETCYBER_BASE, token: process.env.ROCKETCYBER_TOKEN },
@@ -164,8 +164,21 @@ async function translateControls(controls) {
 }
 
 async function getMicrosoft(client) {
-  if (!CFG.ms.clientId || !CFG.ms.secret || !client.tenant_id) return null;
-  const H = { Authorization: `Bearer ${await msToken(client.tenant_id)}` };
+  if (!CFG.ms.clientId || !CFG.ms.secret) return null;
+  // Dual-mode: 'test' = app-only op de test-tenant · 'gdap' = via GDAP naar de echte klant-tenant
+  const mode = client.ms_mode || 'test';
+  const tenant = (mode === 'gdap') ? client.tenant_id : (CFG.ms.testTenant || client.tenant_id);
+  if (!tenant) { log(`  graph: geen tenant (modus ${mode})`); return null; }
+  let token;
+  try { token = await msToken(tenant); }
+  catch (e) {
+    const uitleg = mode === 'gdap'
+      ? '  graph GDAP-modus: token faalde. Controleer of de multi-tenant app via GDAP is geconsenteerd in de klant-tenant.'
+      : '  graph test-modus: token faalde.';
+    log(uitleg, e.message.split('::')[0]); return null;
+  }
+  log(`  graph modus: ${mode} (tenant ${tenant})`);
+  const H = { Authorization: `Bearer ${token}` };
   const out = { scorecard: {}, details: {} };
   const skuMap = {}; // skuId (GUID) -> leesbare naam, voor licenties-per-gebruiker
 
@@ -589,7 +602,7 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-22 · MFA-dekking apart] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-23 · dual-mode Graph] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {

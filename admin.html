@@ -193,6 +193,12 @@
     <div class="connfield" data-integr="microsoft">
     <label>Microsoft tenant-id <span style="color:#1a7f37;font-size:12px">· werkend · ook Defender &amp; Purview (vereist E5)</span></label>
     <input id="c_tenant" placeholder="00000000-0000-0000-0000-000000000000">
+    <label style="margin-top:10px">Koppelmodus</label>
+    <select id="c_msmode">
+      <option value="test">Test-tenant (app-only) — huidige werkwijze</option>
+      <option value="gdap">GDAP naar echte klant-tenant (productie)</option>
+    </select>
+    <div class="hint" style="margin-top:4px">GDAP levert pas data als de multi-tenant app via GDAP is geconsenteerd in de klant-tenant.</div>
     </div>
 
     <div class="connfield" data-integr="freshdesk">
@@ -306,8 +312,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -616,10 +622,11 @@ function openOvDetail(clientId, detailKey, label){
 const CONN_FIELDS = { c_tenant:'tenant_id', c_fresh:'freshdesk_company', c_itglue:'itglue_org', c_grc:'grc_client', c_dattosite:'datto_site', c_dattosaas:'datto_saas', c_rocket:'rocketcyber_customer', c_bullphish:'bullphish_org', c_slug:'slug' };
 async function loadConnections(clientId){
   if(!clientId) return;
-  const cols = ['id'].concat(Object.values(CONN_FIELDS)).join(',');
+  const cols = ['id','ms_mode'].concat(Object.values(CONN_FIELDS)).join(',');
   const { data, error } = await sb.from('clients').select(cols).eq('id', clientId).single();
   if(error){ msg($('connMsg'),'Kan koppelingen niet laden: '+error.message,false); return; }
   for(const el in CONN_FIELDS){ $(el).value = data[CONN_FIELDS[el]] || ''; }
+  $('c_msmode').value = data.ms_mode || 'test';
   applyIntegrToConn();
   msg($('connMsg'),'',true);
 }
@@ -627,6 +634,7 @@ async function saveConnections(){
   const clientId = $('client').value; if(!clientId) return;
   const patch = {};
   for(const el in CONN_FIELDS){ const v=$(el).value.trim(); patch[CONN_FIELDS[el]] = v===''? null : v; }
+  patch.ms_mode = $('c_msmode').value || 'test';
   const { error } = await sb.from('clients').update(patch).eq('id', clientId);
   if(error){ msg($('connMsg'),'Opslaan mislukt: '+error.message,false); return; }
   msg($('connMsg'),'Koppelingen opgeslagen. De collector gebruikt ze bij de volgende run.',true);
