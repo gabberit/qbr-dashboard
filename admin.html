@@ -343,8 +343,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -545,15 +545,21 @@ function selectClient(id){
 }
 function ovNum(v){ if(v==null) return NaN; const mt=String(v).match(/-?\d+(\.\d+)?/); return mt? parseFloat(mt[0]) : NaN; }
 function ovMetrics(d){
+  const real = !!d._sources;                          // echte modus?
+  const kf = d._kpiFilled || [];                      // scorecard-tegels met echte bron
   const sc={}; (d.scorecard||[]).forEach(t=>{ if(t.det) sc[t.det]=t.val; });
-  const lic=lbl=>(((d.licenties?.stats)||[]).find(s=>(s.lbl||'').toLowerCase().startsWith(lbl))||{}).val || '\u2014';
-  const soc=(((d.mdr?.stats)||[]).find(s=>/incident/i.test(s.lbl||''))||{}).val || '\u2014';
+  // scorecard-waarde alleen tonen als de tegel echt gevuld is (net als het dashboard)
+  const S = det => (!real || kf.includes(det)) ? (sc[det]||'\u2014') : '\u2014';
+  const src = name => !real || (d._sources && d._sources[name]===true);
+  const lic=lbl=> src('microsoft') ? ((((d.licenties?.stats)||[]).find(s=>(s.lbl||'').toLowerCase().startsWith(lbl))||{}).val || '\u2014') : '\u2014';
+  const soc= src('mdr') ? ((((d.mdr?.stats)||[]).find(s=>/incident/i.test(s.lbl||''))||{}).val || '\u2014') : '\u2014';
   return {
-    secure:sc.secure||'\u2014', mfa:sc.mfa||'\u2014', mfacov:sc.mfacov||'\u2014', nis2:sc.nis2||'\u2014', vuln:sc.vuln||'\u2014',
-    phish:sc.phish||'\u2014', dlp:sc.dlp||'\u2014', aware:sc.aware||'\u2014', patch:sc.patch||'\u2014',
+    secure:S('secure'), mfa:S('mfa'), mfacov:S('mfacov'), nis2:S('nis2'), vuln:S('vuln'),
+    phish:S('phish'), dlp:S('dlp'), aware:S('aware'), patch:S('patch'),
     licP:lic('aangeschaft'), licT:lic('toegewezen'), licU:lic('ongebruikt'),
-    tickets:d.service?.totaal?.val||'\u2014', sla:d.service?.sla?.val||'\u2014',
-    hw:(d._hardware? (d._hardware.eol+'/'+d._hardware.total) : '\u2014'), soc
+    tickets: src('service') ? (d.service?.totaal?.val||'\u2014') : '\u2014',
+    sla: src('service') ? (d.service?.sla?.val||'\u2014') : '\u2014',
+    hw: (src('hardware') && d._hardware) ? (d._hardware.eol+'/'+d._hardware.total) : '\u2014', soc
   };
 }
 // kolommen: key, label, type ('pct' hoger=beter | 'pctlow' lager=beter | 'count' | 'countbad' hoog=slecht), detailKey
