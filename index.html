@@ -307,7 +307,8 @@ let QBR_DATA = {
 
   scorecard:[
     {lbl:"Microsoft Secure Score", val:"74%", delta:"▲ +9 pt", cls:"up", det:"secure"},
-    {lbl:"Identity Score (MS ID)", val:"81%", delta:"▲ +6 pt · MFA 100%", cls:"up", det:"mfa"},
+    {lbl:"Identity Secure Score", val:"81%", delta:"▲ +6 pt", cls:"up", det:"mfa"},
+    {lbl:"MFA-dekking", val:"100%", delta:"gebruikers met MFA", cls:"up", det:"mfacov"},
     {lbl:"Compliance (NIS2)", val:"68%", delta:"▲ +11 pt", cls:"up", det:"nis2"},
     {lbl:"Open kwetsbaarheden", val:"12", delta:"▼ −31 (was 43)", cls:"down-good", det:"vuln"},
     {lbl:"Phishing geblokkeerd (mail)", val:"1.247", delta:"Defender + INKY", cls:"flat", det:"phish"},
@@ -703,7 +704,7 @@ document.getElementById("heroWrap").innerHTML = `
   ${D.meta.badge?`<span class="tag">${D.meta.badge}</span>`:''}
   <div class="score">${D.scorecard.map(k=>{
     const real=!!D._sources, ok=!real||(D._kpiFilled||[]).includes(k.det);
-    const clickable = ok && (!real || (D._detailsFilled||[]).includes(k.det)) && k.det;
+    const clickable = k.det && (k.det==='mfacov' || (ok && (!real || (D._detailsFilled||[]).includes(k.det))));
     const val = ok ? k.val : '\u2014';
     const dl = ok ? `<div class="dl ${k.cls||''}">${k.delta||''}</div>` : `<div class="dl c-muted" style="font-size:11px;opacity:.7">geen bron</div>`;
     return `<div class="kpi${clickable?' clk':''}"${clickable?` data-det="${k.det}"`:''}><div class="lbl">${k.lbl}</div><div class="val">${val}</div>${dl}</div>`;
@@ -892,7 +893,12 @@ runAnims();
 const back=document.getElementById("modalBack"), mT=document.getElementById("mTitle"), mS=document.getElementById("mSrc"), mB=document.getElementById("mBody");
 function openDetail(key){
   if(D._sources && !(D._detailsFilled||[]).includes(key)){
-    mT.textContent="Geen data"; mS.textContent=""; mB.innerHTML='<p style="color:var(--muted)">Voor dit onderdeel is nog geen bron gekoppeld.</p>';
+    if(key==='mfacov'){
+      mT.textContent="MFA-dekking"; mS.textContent="Entra ID · Graph";
+      mB.innerHTML='<p style="color:var(--muted)">Nog geen MFA-dekkingsdata voor deze klant. De per-gebruiker MFA-status vereist Entra ID P1/P2 of E5; bij een lager pakket levert Microsoft die gegevens niet. Dit is meteen een concreet upgrade-argument voor het gesprek.</p>';
+    } else {
+      mT.textContent="Geen data"; mS.textContent=""; mB.innerHTML='<p style="color:var(--muted)">Voor dit onderdeel is nog geen bron gekoppeld.</p>';
+    }
     back.classList.add("open"); document.body.style.overflow="hidden"; return;
   }
   const d=DET[key]; if(!d) return;
@@ -925,8 +931,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){

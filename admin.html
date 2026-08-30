@@ -281,8 +281,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -411,7 +411,7 @@ function ovMetrics(d){
   const lic=lbl=>(((d.licenties?.stats)||[]).find(s=>(s.lbl||'').toLowerCase().startsWith(lbl))||{}).val || '\u2014';
   const soc=(((d.mdr?.stats)||[]).find(s=>/incident/i.test(s.lbl||''))||{}).val || '\u2014';
   return {
-    secure:sc.secure||'\u2014', mfa:sc.mfa||'\u2014', nis2:sc.nis2||'\u2014', vuln:sc.vuln||'\u2014',
+    secure:sc.secure||'\u2014', mfa:sc.mfa||'\u2014', mfacov:sc.mfacov||'\u2014', nis2:sc.nis2||'\u2014', vuln:sc.vuln||'\u2014',
     phish:sc.phish||'\u2014', dlp:sc.dlp||'\u2014', aware:sc.aware||'\u2014', patch:sc.patch||'\u2014',
     licP:lic('aangeschaft'), licT:lic('toegewezen'), licU:lic('ongebruikt'),
     tickets:d.service?.totaal?.val||'\u2014', sla:d.service?.sla?.val||'\u2014',
@@ -420,7 +420,7 @@ function ovMetrics(d){
 }
 // kolommen: key, label, type ('pct' hoger=beter | 'pctlow' lager=beter | 'count' | 'countbad' hoog=slecht), detailKey
 const OV_COLS = [
-  ['secure','Secure','pct','secure'], ['mfa','MFA','pct','mfa'], ['nis2','NIS2','count',null],
+  ['secure','Secure','pct','secure'], ['mfa','Identity','pct','mfa'], ['mfacov','MFA','pct','mfacov'], ['nis2','NIS2','count',null],
   ['vuln','Kwetsb.','countbad',null], ['phish','Phishing','count',null], ['dlp','DLP','count',null],
   ['aware','Phish-prone','pctlow',null], ['patch','Patch','pct',null],
   ['licP','Lic aang.','count',null], ['licT','Lic toegew.','count','licUsers'], ['licU','Lic ongebr.','countbad',null],
@@ -449,7 +449,7 @@ async function loadOverview(){
   _ovRows = raw.map(({c,snap})=>{
     const m = snap ? ovMetrics(snap.data) : null;
     const n = {}; OV_COLS.forEach(col=> n[col[0]] = m ? ovNum(m[col[0]]) : NaN);
-    const att = m ? ((isFinite(n.secure)&&n.secure<50) || (isFinite(n.mfa)&&n.mfa<50)
+    const att = m ? ((isFinite(n.secure)&&n.secure<50) || (isFinite(n.mfacov)&&n.mfacov<80)
                      || (isFinite(n.licU)&&n.licU>0) || (isFinite(n.hw)&&n.hw>0)) : false;
     return { id:c.id, name:c.name, date:(snap?.generated_at)||'',
       per: snap ? ((snap.generated_at||'').slice(0,7)+' \u00b7 '+(snap.quarter||'')) : null,
@@ -513,7 +513,7 @@ function openOvDetail(clientId, detailKey, label){
   $('ovmSub').textContent = row.name + (row.per?(' \u00b7 '+row.per):'');
   if(!det || !det.rows || !det.rows.length){
     let reden = 'Nog geen data voor dit onderdeel bij deze klant.';
-    if(detailKey==='mfa') reden = 'Nog geen MFA-data. Per-gebruiker MFA-status vereist Entra ID P1/P2 of E5; bij dit pakket levert Microsoft die niet.';
+    if(detailKey==='mfacov') reden = 'Nog geen MFA-dekkingsdata. Per-gebruiker MFA-status vereist Entra ID P1/P2 of E5; bij dit pakket levert Microsoft die niet.';
     $('ovmBody').innerHTML = '<p class="mlead">'+reden+'</p>';
   } else {
     let b = det.lead? '<p class="mlead">'+det.lead+'</p>' : '';
