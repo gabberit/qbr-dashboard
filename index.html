@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QBR · Slimme Werkplek · Fivespark</title>
+<title>QBR · Slimme Werkplek</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!--
   ============================================================================
@@ -243,8 +243,8 @@ tbody tr:last-child td{border-bottom:0}
   </div></div>
   <header class="topbar">
     <a class="logo" href="https://fivespark.com">
-      <img src="https://fivespark.com/hubfs/Fivespark_Oct_2022/Images/Logo.svg" alt="Fivespark"
-           onerror="this.outerHTML='<span class=&quot;wm&quot;>FIVESP<span class=&quot;star&quot;>★</span>RK</span>'">
+      <img src="" alt="logo"
+           onerror="this.outerHTML='<span class=&quot;wm&quot;>QBR</span>'">
     </a>
     <span class="qbr-tag">Quarterly Business Review</span>
   </header>
@@ -854,7 +854,7 @@ html += secC(coupled("microsoft"),"licenties","10","Microsoft licenties — verb
 if (D._sources) {
   // Echte modus: roadmap = AI-suggesties + handmatige items (uit admin); anders leeg.
   const ai = (D.aiRoadmap||[]).map(t=>`<div class="road-row"><span class="pill" style="background:var(--brand-tint,#FFF7E0);color:var(--ink);border:1px solid var(--brand,#FFC20E)">AI-suggestie</span><p>${t}</p></div>`);
-  const man = (D.roadmapManual||[]).map(t=>`<div class="road-row"><span class="pill" style="background:var(--ink);color:#fff">Fivespark</span><p>${t}</p></div>`);
+  const man = (D.roadmapManual||[]).map(t=>`<div class="road-row"><span class="pill" style="background:var(--ink);color:#fff">${D.meta.mspName||'MSP'}</span><p>${t}</p></div>`);
   const items = (ai.length||man.length)
     ? `<div class="road">${man.join("")}${ai.join("")}</div>${ai.length?`<p class="cap" style="text-align:left;margin-top:10px">AI-suggesties automatisch voorgesteld op basis van de cijfers · ter bespreking.</p>`:``}`
     : `<div style="padding:18px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:14px">Nog geen roadmap-items · vul aan via het admin-paneel of bespreek in de QBR.</div>`;
@@ -884,7 +884,7 @@ if (D._sources) {
     </div>`);
 }
 
-html += `<footer class="site-foot"><span>Fivespark · ${D.meta.propositie} — Quarterly Business Review</span><span>${D.meta.client} · ${D.meta.quarter} · Volgende QBR: ${D.meta.next}</span></footer>`;
+html += `<footer class="site-foot"><span>${D.meta.mspName||'QBR'} · ${D.meta.propositie} — Quarterly Business Review</span><span>${D.meta.client} · ${D.meta.quarter} · Volgende QBR: ${D.meta.next}</span></footer>`;
 
 document.getElementById("content").innerHTML = html;
 runAnims();
@@ -927,8 +927,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -1043,8 +1043,11 @@ async function startApp(){
         ]);
         const logo = (cl&&cl.logo_url) || (msp&&msp.logo_url) || '';
         const vcio = (cl&&cl.vcio) || (msp&&msp.vcio) || (QBR_DATA.meta&&QBR_DATA.meta.vcio) || '';
-        if(logo){ const img=document.querySelector('.topbar .logo img'); if(img) img.src=logo; }
-        if(QBR_DATA.meta){ QBR_DATA.meta.vcio = vcio; }
+        const mspName = (msp&&msp.name) || '';
+        if(QBR_DATA.meta){ QBR_DATA.meta.vcio = vcio; if(mspName) QBR_DATA.meta.mspName = mspName; }
+        const img=document.querySelector('.topbar .logo img');
+        if(logo){ if(img) img.src=logo; }
+        else if(img && mspName){ img.replaceWith(Object.assign(document.createElement('span'),{className:'wm',textContent:mspName})); }
       }catch(e){ /* branding optioneel; stil laten vallen */ }
     }
     async function loadSnapshot(id){

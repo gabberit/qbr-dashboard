@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QBR Admin · Fivespark</title>
+<title>QBR Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{ --ink:#1D1D1B; --brand:#FFC20E; --line:#E3E3DF; --muted:#6A6A64; --ice:#F6F6F4; }
@@ -25,29 +25,37 @@
   .msg{ padding:10px 14px; border-radius:8px; font-size:13.5px; margin-top:12px; }
   .msg.ok{ background:#E9F7EF; color:#1D8E56; }
   .msg.err{ background:#FDECEA; color:#C0392B; }
-  .hidden{ display:none; }
+  .hidden{ display:none !important; }
   h1{ font-size:19px; margin:0 0 4px; } h2{ font-size:15px; margin:0 0 2px; }
-  /* Sidebar-layout */
+  /* Sidebar-layout — zelfde stijl als het dashboard (donker, sticky) */
   .adminshell{ display:grid; grid-template-columns:230px 1fr; min-height:calc(100vh - 52px); }
-  .adminnav{ background:#fff; border-right:1px solid var(--line); padding:20px 12px; }
-  .adminnav .navttl{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:6px 10px 10px; }
-  .adminnav a{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; color:var(--ink); text-decoration:none; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:3px; }
-  .adminnav a:hover{ background:var(--ice); }
-  .adminnav a.active{ background:var(--ink); color:#fff; }
+  .adminnav{ position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+             background:var(--ink); color:#D7D7D2; padding:22px 16px; display:flex; flex-direction:column; gap:2px; }
+  .adminnav .navttl{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#7C7C74; margin:14px 8px 8px; }
+  .adminnav .navttl:first-child{ margin-top:0; }
+  .adminnav a{ display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:9px;
+               color:#B9B9B2; text-decoration:none; font-size:14px; font-weight:600; cursor:pointer; transition:.16s; }
+  .adminnav a:hover{ background:rgba(255,255,255,.06); color:#fff; }
+  .adminnav a.active{ background:rgba(255,194,14,.18); color:#fff; }
   .adminnav a.active .nz{ color:var(--brand); }
-  .adminnav .nz{ font-size:15px; width:20px; text-align:center; }
+  .adminnav .nz{ font-size:15px; width:20px; text-align:center; color:#7C7C74; }
   .adminmain{ padding:26px 30px; max-width:1200px; }
   .adminmain .card{ max-width:820px; }
   #overviewCard{ max-width:none; }
   .clientpick{ display:flex; gap:10px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:16px; }
   .clientpick label{ margin:0; white-space:nowrap; }
   .clientpick select{ max-width:340px; }
-  @media (max-width:820px){ .adminshell{ grid-template-columns:1fr; } .adminnav{ border-right:0; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:4px; } .adminnav .navttl{ display:none; } }
+  @media (max-width:820px){
+    .adminshell{ grid-template-columns:1fr; }
+    .adminnav{ position:static; height:auto; flex-direction:row; flex-wrap:wrap; gap:4px; padding:12px 16px; }
+    .adminnav .navttl{ display:none; }
+    .adminmain{ padding:18px; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <span class="brand">FIVESP<span>&#9733;</span>RK</span> &nbsp;·&nbsp; QBR Admin
+  <span class="brand" id="brandName">QBR</span> &nbsp;·&nbsp; Admin
   <div class="sp"></div>
   <span id="who" style="font-size:13px;opacity:.8"></span>
   <button id="logout" class="ghost hidden">Uitloggen</button>
@@ -57,7 +65,7 @@
   <!-- LOGIN -->
   <div id="loginCard" class="card">
     <h1>Inloggen</h1>
-    <p class="hint">Alleen voor Fivespark-medewerkers. Accounts worden beheerd in Supabase.</p>
+    <p class="hint">Alleen voor beheerders. Accounts worden beheerd in Supabase.</p>
     <label>E-mail</label>
     <input id="email" type="email" autocomplete="username" placeholder="jij@fivespark.nl">
     <label>Wachtwoord</label>
@@ -100,7 +108,7 @@
     <h2>Klantenoverzicht</h2>
     <p class="hint">Klik een kolomkop om te sorteren (laagste eerst; nogmaals klikken keert om). Klik een rij om die klant te bewerken. &laquo;&mdash;&raquo; = bron nog niet gekoppeld, staat altijd onderaan bij sorteren.</p>
     <div style="display:flex;gap:12px;align-items:center;margin:10px 0 14px;flex-wrap:wrap">
-      <input id="ovSearch" placeholder="Zoek op klantnaam\u2026" style="flex:1;min-width:200px;padding:9px 11px;border:1px solid #ddd;border-radius:8px">
+      <input id="ovSearch" placeholder="Zoek op klantnaam&hellip;" style="flex:1;min-width:200px;padding:9px 11px;border:1px solid #ddd;border-radius:8px">
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer;user-select:none">
         <input id="ovAtt" type="checkbox"> Alleen aandachtspunten
       </label>
@@ -127,7 +135,7 @@
     <input id="replacePrice" type="number" min="0" step="10" placeholder="bijv. 950">
 
     <h2 style="margin-top:22px">Extra roadmap-items (handmatig)</h2>
-    <p class="hint">Eén per regel. Komt naast de AI-suggesties, met label &laquo;Fivespark&raquo;.</p>
+    <p class="hint">Eén per regel. Komt naast de AI-suggesties, met het label van je organisatie.</p>
     <textarea id="roadmap" placeholder="Wifi-refresh magazijn&#10;Awareness-training Q4"></textarea>
 
     <div style="margin-top:20px"><button id="saveBtn">Opslaan</button></div>
@@ -173,7 +181,7 @@
     <h2>Onze huisstijl (MSP)</h2>
     <p class="hint">Geldt als standaard voor alle klanten. Per klant kun je hieronder afwijken.</p>
     <label>Bedrijfsnaam</label>
-    <input id="m_name" placeholder="Fivespark">
+    <input id="m_name" placeholder="Naam van je organisatie">
     <label style="margin-top:12px">vCIO (standaard)</label>
     <input id="m_vcio" placeholder="bijv. J. Bakker">
     <label style="margin-top:12px">Logo</label>
@@ -218,8 +226,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -263,7 +271,7 @@ async function onSession(session){
     await sb.auth.signOut();
     show($('adminShell'), false); show($('logout'), false);
     show($('loginWrap'), true); show($('loginCard'), true);
-    msg($('loginMsg'),'Dit beheerpaneel is alleen voor Fivespark-beheerders. Dit account heeft geen toegang.',false);
+    msg($('loginMsg'),'Dit beheerpaneel is alleen voor beheerders van deze omgeving. Dit account heeft geen toegang.',false);
     return;
   }
   show($('loginWrap'), false); show($('loginCard'), false);
@@ -293,6 +301,7 @@ async function loadMspBranding(){
   if(!data){ msg($('brandMspMsg'),'Geen MSP gekoppeld aan je account (msp_members).',false); return; }
   _mspId = data.id;
   $('m_name').value = data.name||''; $('m_vcio').value = data.vcio||'';
+  if(data.name) $('brandName').textContent = data.name;
   $('m_logoPrev').dataset.url = data.logo_url||''; setPrev($('m_logoPrev'), data.logo_url);
 }
 async function saveMspBranding(){
