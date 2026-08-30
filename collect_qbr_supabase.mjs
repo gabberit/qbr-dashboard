@@ -166,7 +166,7 @@ async function translateControls(controls) {
 async function getMicrosoft(client) {
   if (!CFG.ms.clientId || !CFG.ms.secret) return null;
   // Dual-mode: 'test' = app-only op de test-tenant · 'gdap' = via GDAP naar de echte klant-tenant
-  const mode = client.ms_mode || 'test';
+  const mode = client.ms_mode || client._mspMsMode || 'test';
   const tenant = (mode === 'gdap') ? client.tenant_id : (CFG.ms.testTenant || client.tenant_id);
   if (!tenant) { log(`  graph: geen tenant (modus ${mode})`); return null; }
   let token;
@@ -602,7 +602,15 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-23 · dual-mode Graph] voor ${clients.length} klant(en)`);
+  // MSP-brede Microsoft-modus als terugval per klant (integrations._msMode)
+  if (!CFG.offline && CFG.supa.url) {
+    try {
+      const msps = await jfetch(`${CFG.supa.url}/rest/v1/msp?select=id,integrations`, { headers: sHead() });
+      const mode = {}; for (const m of (msps || [])) mode[m.id] = (m.integrations && m.integrations._msMode) || 'test';
+      for (const c of clients) c._mspMsMode = mode[c.msp_id] || 'test';
+    } catch { /* geen msp-tabel? val terug op 'test' per klant */ }
+  }
+  log(`Start maand-run [BUILD-24 · MSP-brede modus] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
