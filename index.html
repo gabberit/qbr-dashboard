@@ -237,15 +237,13 @@ tbody tr:last-child td{border-bottom:0}
 <!-- TOP BAR -->
 <div class="topwrap">
   <div class="topstrip"><div class="ts-in">
-    <span class="ph">088 - 411 00 33</span>
-    <a class="hideS" href="https://shop.fivespark.com/">WEBSHOP ›</a>
-    <a class="hideS" href="https://fivespark.com/klantenportaal">KLANTENPORTAAL ›</a>
+    <span class="ph" id="topPhone"></span>
   </div></div>
   <header class="topbar">
-    <a class="logo" href="https://fivespark.com">
+    <span class="logo">
       <img src="" alt="logo"
            onerror="this.outerHTML='<span class=&quot;wm&quot;>QBR</span>'">
-    </a>
+    </span>
     <span class="qbr-tag">Quarterly Business Review</span>
   </header>
 </div>
@@ -927,8 +925,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -1038,7 +1036,7 @@ async function startApp(){
     async function applyBranding(clientId){
       try{
         const [mspRes, clRes] = await Promise.all([
-          sb.from('msp').select('name,logo_url,vcio').limit(1).maybeSingle(),
+          sb.from('msp').select('name,logo_url,vcio,phone,link1_label,link1_url,link2_label,link2_url').limit(1).maybeSingle(),
           sb.from('clients').select('name,logo_url,vcio').eq('id',clientId).maybeSingle()
         ]);
         const msp = mspRes && mspRes.data, cl = clRes && clRes.data;
@@ -1050,6 +1048,15 @@ async function startApp(){
         if(box){
           if(logo){ box.innerHTML = '<img src="'+logo+'" alt="logo" style="height:30px">'; }
           else if(mspName){ box.innerHTML = '<span class="wm">'+mspName+'</span>'; }
+        }
+        const strip = document.querySelector('.topstrip .ts-in');
+        if(strip && msp){
+          const esc = s => String(s).replace(/"/g,'&quot;');
+          let h = '';
+          if(msp.phone) h += '<span class="ph">'+msp.phone+'</span>';
+          if(msp.link1_url) h += '<a class="hideS" href="'+esc(msp.link1_url)+'">'+(msp.link1_label||'Link')+' \u203A</a>';
+          if(msp.link2_url) h += '<a class="hideS" href="'+esc(msp.link2_url)+'">'+(msp.link2_label||'Link')+' \u203A</a>';
+          strip.innerHTML = h;
         }
       }catch(e){ /* branding optioneel; stil laten vallen */ }
     }

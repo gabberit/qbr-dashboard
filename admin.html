@@ -55,6 +55,7 @@
 </head>
 <body>
 <header>
+  <img id="brandLogo" src="" alt="" style="height:26px;max-width:150px;object-fit:contain;display:none;vertical-align:middle;margin-right:6px">
   <span class="brand" id="brandName">QBR</span> &nbsp;·&nbsp; Admin
   <div class="sp"></div>
   <span id="who" style="font-size:13px;opacity:.8"></span>
@@ -184,7 +185,19 @@
     <input id="m_name" placeholder="Naam van je organisatie">
     <label style="margin-top:12px">vCIO (standaard)</label>
     <input id="m_vcio" placeholder="bijv. J. Bakker">
-    <label style="margin-top:12px">Logo</label>
+    <h2 style="margin-top:22px;font-size:15px">Bovenbalk dashboard</h2>
+    <p class="hint">Laat een veld leeg om het te verbergen in de balk.</p>
+    <label>Telefoonnummer</label>
+    <input id="m_phone" placeholder="bijv. 088 - 123 45 67">
+    <div class="row" style="grid-template-columns:1fr 2fr;margin-top:10px">
+      <div><label style="margin-top:0">Link 1 — label</label><input id="m_l1lab" placeholder="Webshop"></div>
+      <div><label style="margin-top:0">Link 1 — URL</label><input id="m_l1url" placeholder="https://..."></div>
+    </div>
+    <div class="row" style="grid-template-columns:1fr 2fr;margin-top:8px">
+      <div><label style="margin-top:0">Link 2 — label</label><input id="m_l2lab" placeholder="Klantenportaal"></div>
+      <div><label style="margin-top:0">Link 2 — URL</label><input id="m_l2url" placeholder="https://..."></div>
+    </div>
+    <label style="margin-top:16px">Logo</label>
     <div style="display:flex;gap:14px;align-items:center;margin-top:6px">
       <img id="m_logoPrev" src="" alt="" style="height:40px;max-width:180px;object-fit:contain;background:#fff;border:1px solid #eee;border-radius:6px;padding:4px;display:none">
       <input id="m_logoFile" type="file" accept="image/*">
@@ -226,8 +239,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -293,15 +306,19 @@ async function uploadLogo(file, prefix){
 function setPrev(imgEl, url){ if(url){ imgEl.src=url; imgEl.style.display='block'; } else { imgEl.style.display='none'; } }
 
 async function loadMspBranding(){
-  const { data, error } = await sb.from('msp').select('id,name,logo_url,vcio').limit(1).maybeSingle();
+  const { data, error } = await sb.from('msp').select('id,name,logo_url,vcio,phone,link1_label,link1_url,link2_label,link2_url').limit(1).maybeSingle();
   if(error){
-    const hint = /column .* does not exist/i.test(error.message) ? ' \u2014 draai eerst schema_branding.sql in Supabase.' : '';
+    const hint = /column .* does not exist/i.test(error.message) ? ' \u2014 draai eerst schema_branding.sql (+ schema_branding_links.sql) in Supabase.' : '';
     msg($('brandMspMsg'),'Kan huisstijl niet laden: '+error.message+hint,false); return;
   }
   if(!data){ msg($('brandMspMsg'),'Geen MSP gekoppeld aan je account (msp_members).',false); return; }
   _mspId = data.id;
   $('m_name').value = data.name||''; $('m_vcio').value = data.vcio||'';
+  $('m_phone').value = data.phone||'';
+  $('m_l1lab').value = data.link1_label||''; $('m_l1url').value = data.link1_url||'';
+  $('m_l2lab').value = data.link2_label||''; $('m_l2url').value = data.link2_url||'';
   if(data.name) $('brandName').textContent = data.name;
+  if(data.logo_url){ const bl=$('brandLogo'); bl.src=data.logo_url; bl.style.display='inline-block'; }
   $('m_logoPrev').dataset.url = data.logo_url||''; setPrev($('m_logoPrev'), data.logo_url);
 }
 async function saveMspBranding(){
@@ -310,7 +327,11 @@ async function saveMspBranding(){
   try{
     const f=$('m_logoFile').files[0];
     if(f){ msg($('brandMspMsg'),'Logo uploaden\u2026',true); logo_url = await uploadLogo(f,'msp/'+_mspId); }
-    const { error } = await sb.from('msp').update({ name:$('m_name').value.trim(), vcio:$('m_vcio').value.trim()||null, logo_url }).eq('id',_mspId);
+    const patch = { name:$('m_name').value.trim(), vcio:$('m_vcio').value.trim()||null, logo_url,
+      phone:$('m_phone').value.trim()||null,
+      link1_label:$('m_l1lab').value.trim()||null, link1_url:$('m_l1url').value.trim()||null,
+      link2_label:$('m_l2lab').value.trim()||null, link2_url:$('m_l2url').value.trim()||null };
+    const { error } = await sb.from('msp').update(patch).eq('id',_mspId);
     if(error) throw error;
     $('m_logoPrev').dataset.url=logo_url||''; setPrev($('m_logoPrev'),logo_url); $('m_logoFile').value='';
     msg($('brandMspMsg'),'Huisstijl opgeslagen.',true);
