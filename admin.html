@@ -51,6 +51,35 @@
     .adminnav .navttl{ display:none; }
     .adminmain{ padding:18px; }
   }
+  /* Klantenoverzicht */
+  .ovtable{ border-collapse:separate; border-spacing:0; width:100%; font-size:13px; }
+  .ovtable thead th{ position:sticky; top:0; background:#fff; text-align:center; padding:9px 8px; font-size:11px;
+    text-transform:uppercase; letter-spacing:.03em; color:var(--muted); border-bottom:2px solid var(--line); cursor:pointer; white-space:nowrap; }
+  .ovtable thead th.tleft{ text-align:left; }
+  .ovtable tbody td{ padding:8px; text-align:center; border-bottom:1px solid #f1f1ef; white-space:nowrap; }
+  .ovtable tbody tr:hover{ background:#faf7ec; }
+  .ovtable td.cname{ text-align:left; font-weight:700; position:sticky; left:0; background:inherit; }
+  .ovtable tbody tr:nth-child(even){ background:#fafafa; }
+  .ovtable tbody tr:nth-child(even):hover{ background:#faf7ec; }
+  .ovtable tr.att td.cname{ box-shadow:inset 3px 0 0 var(--brand); }
+  .chip{ display:inline-block; min-width:44px; padding:3px 9px; border-radius:999px; font-weight:700; font-size:12.5px; }
+  .chip.g{ background:#e6f4ea; color:#1a7f37; } .chip.a{ background:#fdf0dd; color:#96631a; } .chip.r{ background:#fbe4e4; color:#b3261e; }
+  .chip.n{ background:#f0f0ee; color:#555; } .chip.none{ color:#c4c4c0; }
+  .chip.clk{ cursor:pointer; } .chip.clk:hover{ filter:brightness(.96); text-decoration:underline; }
+  .ovlegend{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:12px; }
+  .ovlegend b{ font-weight:700; }
+  /* Detail-modal */
+  .mback{ position:fixed; inset:0; background:rgba(20,20,18,.55); display:none; align-items:center; justify-content:center; z-index:9999; padding:20px; }
+  .mback.open{ display:flex; }
+  .mcard{ background:#fff; border-radius:14px; max-width:640px; width:100%; max-height:82vh; overflow:auto; box-shadow:0 24px 70px rgba(0,0,0,.35); }
+  .mhead{ padding:20px 24px 12px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; }
+  .mhead h3{ margin:0; font-size:17px; } .mhead .msub{ font-size:12.5px; color:var(--muted); margin-top:3px; }
+  .mbody{ padding:16px 24px 24px; }
+  .mbody table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .mbody th{ text-align:left; padding:7px 8px; border-bottom:2px solid var(--line); font-size:11px; text-transform:uppercase; color:var(--muted); }
+  .mbody td{ padding:7px 8px; border-bottom:1px solid #f1f1ef; vertical-align:top; }
+  .mclose{ position:absolute; top:16px; right:18px; background:none; border:0; font-size:22px; cursor:pointer; color:#999; width:auto; padding:0; }
+  .mlead{ font-size:13.5px; color:#444; margin:0 0 14px; }
 </style>
 </head>
 <body>
@@ -107,7 +136,7 @@
 
   <div id="overviewCard" class="card secblock" data-sec="overzicht">
     <h2>Klantenoverzicht</h2>
-    <p class="hint">Klik een kolomkop om te sorteren (laagste eerst; nogmaals klikken keert om). Klik een rij om die klant te bewerken. &laquo;&mdash;&raquo; = bron nog niet gekoppeld, staat altijd onderaan bij sorteren.</p>
+    <p class="hint">Klik een gekleurd cijfer voor de onderliggende aanbevelingen. Klik een kolomkop om te sorteren, of de klantnaam om die klant te bewerken.</p>
     <div style="display:flex;gap:12px;align-items:center;margin:10px 0 14px;flex-wrap:wrap">
       <input id="ovSearch" placeholder="Zoek op klantnaam&hellip;" style="flex:1;min-width:200px;padding:9px 11px;border:1px solid #ddd;border-radius:8px">
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer;user-select:none">
@@ -116,6 +145,19 @@
       <span id="ovCount" class="hint" style="margin:0"></span>
     </div>
     <div id="ovWrap" style="overflow-x:auto"><div id="ovTable" class="hint">Laden&hellip;</div></div>
+    <div class="ovlegend">
+      <span><span class="chip g" style="min-width:auto">&nbsp;</span> <b>goed</b> &ge;70%</span>
+      <span><span class="chip a" style="min-width:auto">&nbsp;</span> <b>aandacht</b> 40&ndash;69%</span>
+      <span><span class="chip r" style="min-width:auto">&nbsp;</span> <b>laag</b> &lt;40%</span>
+      <span><span class="chip none" style="min-width:auto">&mdash;</span> geen data / bron</span>
+    </div>
+  </div>
+
+  <div id="ovModal" class="mback">
+    <div class="mcard">
+      <div class="mhead"><button class="mclose" id="ovModalClose">&times;</button><h3 id="ovmTitle"></h3><div class="msub" id="ovmSub"></div></div>
+      <div class="mbody" id="ovmBody"></div>
+    </div>
   </div>
 
   <div id="editCard" class="card secblock" data-sec="qbr">
@@ -239,8 +281,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -358,32 +400,40 @@ async function saveClientBranding(){
   }catch(e){ msg($('brandClientMsg'),'Opslaan mislukt: '+e.message,false); }
 }
 
-/* ---- Klantenoverzicht (cijfers, sorteren, filteren) ---- */
+/* ---- Klantenoverzicht (strak, kleurgecodeerd, klikbaar detail) ---- */
 function selectClient(id){
-  $('client').value = id; loadSnapshot(id); loadConnections(id);
-  document.getElementById('editCard').scrollIntoView({behavior:'smooth', block:'start'});
+  $('client').value = id; loadSnapshot(id); loadConnections(id); loadClientBranding(id);
+  showSection('qbr');
 }
 function ovNum(v){ if(v==null) return NaN; const mt=String(v).match(/-?\d+(\.\d+)?/); return mt? parseFloat(mt[0]) : NaN; }
 function ovMetrics(d){
   const sc={}; (d.scorecard||[]).forEach(t=>{ if(t.det) sc[t.det]=t.val; });
   const lic=lbl=>(((d.licenties?.stats)||[]).find(s=>(s.lbl||'').toLowerCase().startsWith(lbl))||{}).val || '\u2014';
   const soc=(((d.mdr?.stats)||[]).find(s=>/incident/i.test(s.lbl||''))||{}).val || '\u2014';
-  const ai=d.aiDuiding?.concept ? (d.aiDuiding.concept.slice(0,90)+(d.aiDuiding.concept.length>90?'\u2026':'')) : '\u2014';
   return {
-    secure:sc.secure||'\u2014', identity:sc.mfa||'\u2014', nis2:sc.nis2||'\u2014', vuln:sc.vuln||'\u2014',
+    secure:sc.secure||'\u2014', mfa:sc.mfa||'\u2014', nis2:sc.nis2||'\u2014', vuln:sc.vuln||'\u2014',
     phish:sc.phish||'\u2014', dlp:sc.dlp||'\u2014', aware:sc.aware||'\u2014', patch:sc.patch||'\u2014',
     licP:lic('aangeschaft'), licT:lic('toegewezen'), licU:lic('ongebruikt'),
     tickets:d.service?.totaal?.val||'\u2014', sla:d.service?.sla?.val||'\u2014',
-    hw:(d._hardware? (d._hardware.eol+'/'+d._hardware.total) : '\u2014'), soc, ai
+    hw:(d._hardware? (d._hardware.eol+'/'+d._hardware.total) : '\u2014'), soc
   };
 }
+// kolommen: key, label, type ('pct' hoger=beter | 'pctlow' lager=beter | 'count' | 'countbad' hoog=slecht), detailKey
 const OV_COLS = [
-  ['secure','Secure'], ['identity','Identity'], ['nis2','NIS2'], ['vuln','Kwetsb.'],
-  ['phish','Phishing'], ['dlp','DLP'], ['aware','Phish-prone'], ['patch','Patch'],
-  ['licP','Lic aang.'], ['licT','Lic toegew.'], ['licU','Lic ongebr.'],
-  ['tickets','Tickets'], ['sla','SLA'], ['hw','HW EOL'], ['soc','SOC']
+  ['secure','Secure','pct','secure'], ['mfa','MFA','pct','mfa'], ['nis2','NIS2','count',null],
+  ['vuln','Kwetsb.','countbad',null], ['phish','Phishing','count',null], ['dlp','DLP','count',null],
+  ['aware','Phish-prone','pctlow',null], ['patch','Patch','pct',null],
+  ['licP','Lic aang.','count',null], ['licT','Lic toegew.','count','licUsers'], ['licU','Lic ongebr.','countbad',null],
+  ['tickets','Tickets','count','tickets'], ['sla','SLA','pct',null], ['hw','HW EOL','countbad','hw'], ['soc','SOC','count',null]
 ];
-let _ovRows = [];           // {id,name,per,date,m,n,att}
+function chipClass(col, n){
+  if(!isFinite(n)) return 'none';
+  if(col[2]==='pct')    return n>=70?'g':n>=40?'a':'r';
+  if(col[2]==='pctlow') return n<10?'g':n<=25?'a':'r';
+  if(col[2]==='countbad')return n>0?'a':'g';
+  return 'n';
+}
+let _ovRows = [];
 let _ovSort = { key:null, dir:1 };
 
 async function loadOverview(){
@@ -399,60 +449,80 @@ async function loadOverview(){
   _ovRows = raw.map(({c,snap})=>{
     const m = snap ? ovMetrics(snap.data) : null;
     const n = {}; OV_COLS.forEach(col=> n[col[0]] = m ? ovNum(m[col[0]]) : NaN);
-    // Aandachtspunt: lage Secure/Identity, ongebruikte licenties, of EOL-hardware
-    const att = m ? ((isFinite(n.secure)&&n.secure<50) || (isFinite(n.identity)&&n.identity<50)
+    const att = m ? ((isFinite(n.secure)&&n.secure<50) || (isFinite(n.mfa)&&n.mfa<50)
                      || (isFinite(n.licU)&&n.licU>0) || (isFinite(n.hw)&&n.hw>0)) : false;
     return { id:c.id, name:c.name, date:(snap?.generated_at)||'',
       per: snap ? ((snap.generated_at||'').slice(0,7)+' \u00b7 '+(snap.quarter||'')) : null,
-      m, n, att };
+      data: snap?snap.data:null, m, n, att };
   });
   renderOverview();
 }
 function renderOverview(){
-  const term = ($('ovSearch').value||'').trim().toLowerCase();
-  const attOnly = $('ovAtt').checked;
-  let rows = _ovRows.filter(r=> (!term || r.name.toLowerCase().includes(term)) && (!attOnly || r.att));
-  // Sorteren; NaN/lege waarden altijd onderaan
+  const term=($('ovSearch').value||'').trim().toLowerCase();
+  const attOnly=$('ovAtt').checked;
+  let rows=_ovRows.filter(r=> (!term||r.name.toLowerCase().includes(term)) && (!attOnly||r.att));
   const k=_ovSort.key, dir=_ovSort.dir;
-  if(k){
-    rows = rows.slice().sort((a,b)=>{
-      let av,bv;
-      if(k==='name'){ av=a.name.toLowerCase(); bv=b.name.toLowerCase(); return av<bv?-dir:av>bv?dir:0; }
-      if(k==='per'){ av=a.date||''; bv=b.date||''; return av<bv?-dir:av>bv?dir:0; }
-      av=a.n[k]; bv=b.n[k];
-      const aN=!isFinite(av), bN=!isFinite(bv);
-      if(aN&&bN) return 0; if(aN) return 1; if(bN) return -1;   // lege altijd onderaan
-      return (av-bv)*dir;
-    });
-  }
-  const arrow = key => _ovSort.key===key ? (_ovSort.dir===1?' \u25B2':' \u25BC') : '';
-  const thBase='padding:6px 9px;border-bottom:2px solid #eee;font-size:11.5px;white-space:nowrap;cursor:pointer;user-select:none';
-  const th=(key,label,extra='')=>`<th data-sort="${key}" style="text-align:left;${thBase};${extra}">${label}${arrow(key)}</th>`;
-  const td=(h,extra='')=>`<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;font-size:12.5px;${extra}">${h}</td>`;
-  let html='<table style="border-collapse:collapse;width:100%;min-width:1100px"><thead><tr>'
-    + th('name','Klant','position:sticky;left:0;background:#fff') + th('per','Periode')
-    + OV_COLS.map(c=>th(c[0],c[1],'text-align:center')).join('')
-    + `<th style="text-align:left;${thBase.replace('cursor:pointer;','')};cursor:default">AI-duiding</th>` + '</tr></thead><tbody>';
+  if(k){ rows=rows.slice().sort((a,b)=>{
+      if(k==='name'){ return a.name.toLowerCase()<b.name.toLowerCase()?-dir:a.name.toLowerCase()>b.name.toLowerCase()?dir:0; }
+      if(k==='per'){ return (a.date||'')<(b.date||'')?-dir:(a.date||'')>(b.date||'')?dir:0; }
+      const av=a.n[k],bv=b.n[k],aN=!isFinite(av),bN=!isFinite(bv);
+      if(aN&&bN)return 0; if(aN)return 1; if(bN)return -1; return (av-bv)*dir;
+    }); }
+  const arrow=key=> _ovSort.key===key ? (_ovSort.dir===1?' \u25B2':' \u25BC') : '';
+  let h='<table class="ovtable"><thead><tr>'
+    + '<th class="tleft" data-sort="name">Klant'+arrow('name')+'</th>'
+    + '<th class="tleft" data-sort="per">Periode'+arrow('per')+'</th>'
+    + OV_COLS.map(c=>'<th data-sort="'+c[0]+'">'+c[1]+arrow(c[0])+'</th>').join('') + '</tr></thead><tbody>';
   for(const r of rows){
-    html += '<tr class="ovRow" data-id="'+r.id+'" style="cursor:pointer">'
-      + td('<b>'+r.name+'</b>','white-space:nowrap;position:sticky;left:0;background:#fff')
-      + td(r.per || '<span style="color:#bbb">geen data</span>','white-space:nowrap')
-      + OV_COLS.map(col=>td(r.m? r.m[col[0]] : '\u2014','text-align:center;white-space:nowrap')).join('')
-      + td(r.m? r.m.ai : '\u2014','max-width:280px;color:#555') + '</tr>';
+    h+='<tr class="'+(r.att?'att':'')+'"><td class="cname" data-client="'+r.id+'" style="cursor:pointer">'+r.name+'</td>'
+      + '<td>'+(r.per||'<span class="chip none">\u2014</span>')+'</td>';
+    for(const col of OV_COLS){
+      const val=r.m? r.m[col[0]] : '\u2014';
+      const n=r.n[col[0]];
+      if(val==='\u2014'){ h+='<td><span class="chip none">\u2014</span></td>'; continue; }
+      const cls=chipClass(col,n);
+      const clickable = col[3] && r.data;
+      h+='<td><span class="chip '+cls+(clickable?' clk':'')+'"'
+        + (clickable?(' data-client="'+r.id+'" data-detail="'+col[3]+'" data-label="'+col[1]+'"'):'')
+        + '>'+val+'</span></td>';
+    }
+    h+='</tr>';
   }
-  html+='</tbody></table>';
-  $('ovTable').innerHTML = html;
-  $('ovCount').textContent = rows.length + ' van ' + _ovRows.length + ' klanten';
-  $('ovTable').querySelectorAll('.ovRow').forEach(r=>{
-    r.onmouseenter=()=>r.style.background='#faf7ec'; r.onmouseleave=()=>r.style.background='';
-    r.onclick=()=>selectClient(r.getAttribute('data-id'));
+  h+='</tbody></table>';
+  $('ovTable').innerHTML=h;
+  $('ovCount').textContent=rows.length+' van '+_ovRows.length+' klanten';
+  $('ovTable').querySelectorAll('td.cname[data-client]').forEach(td=> td.onclick=()=>selectClient(td.getAttribute('data-client')));
+  $('ovTable').querySelectorAll('.chip.clk').forEach(ch=> ch.onclick=()=>openOvDetail(ch.getAttribute('data-client'), ch.getAttribute('data-detail'), ch.getAttribute('data-label')));
+  $('ovTable').querySelectorAll('th[data-sort]').forEach(th=> th.onclick=()=>{
+    const key=th.getAttribute('data-sort');
+    if(_ovSort.key===key) _ovSort.dir*=-1; else { _ovSort.key=key; _ovSort.dir=1; }
+    renderOverview();
   });
-  $('ovTable').querySelectorAll('th[data-sort]').forEach(h=>{
-    h.onclick=()=>{ const key=h.getAttribute('data-sort');
-      if(_ovSort.key===key) _ovSort.dir*=-1; else { _ovSort.key=key; _ovSort.dir=1; }
-      renderOverview();
-    };
-  });
+}
+function openOvDetail(clientId, detailKey, label){
+  const row=_ovRows.find(r=>r.id===clientId); if(!row||!row.data) return;
+  const d=row.data;
+  let det=null;
+  if(detailKey==='tickets'){
+    const t=d.service?.tickets;
+    if(t&&t.length) det={ title:'Tickets — categorieën', lead:'Verdeling van tickets over categorieën.', cols:['Categorie','Aantal'], rows:t };
+  } else {
+    det = (d.details&&d.details[detailKey]) || null;
+  }
+  $('ovmTitle').textContent = (det&&det.title) || (label+' — '+row.name);
+  $('ovmSub').textContent = row.name + (row.per?(' \u00b7 '+row.per):'');
+  if(!det || !det.rows || !det.rows.length){
+    let reden = 'Nog geen data voor dit onderdeel bij deze klant.';
+    if(detailKey==='mfa') reden = 'Nog geen MFA-data. Per-gebruiker MFA-status vereist Entra ID P1/P2 of E5; bij dit pakket levert Microsoft die niet.';
+    $('ovmBody').innerHTML = '<p class="mlead">'+reden+'</p>';
+  } else {
+    let b = det.lead? '<p class="mlead">'+det.lead+'</p>' : '';
+    b += '<table><thead><tr>'+(det.cols||[]).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+    b += det.rows.map(r=>'<tr>'+r.map(cell=>'<td>'+(cell&&cell.t!==undefined?cell.t:cell)+'</td>').join('')+'</tr>').join('');
+    b += '</tbody></table>';
+    $('ovmBody').innerHTML = b;
+  }
+  $('ovModal').classList.add('open');
 }
 
 /* ---- Koppelingen (per klant) ---- */
@@ -606,6 +676,8 @@ $('brandMspBtn').onclick = saveMspBranding;
 $('brandClientBtn').onclick = saveClientBranding;
 $('ovSearch').oninput = () => renderOverview();
 $('ovAtt').onchange = () => renderOverview();
+$('ovModalClose').onclick = () => $('ovModal').classList.remove('open');
+$('ovModal').onclick = (e) => { if(e.target===$('ovModal')) $('ovModal').classList.remove('open'); };
 $('addAction').onclick = () => $('acties').appendChild(actionRow());
 $('saveBtn').onclick = doSave;
 
