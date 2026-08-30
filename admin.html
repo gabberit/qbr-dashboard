@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QBR Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{ --ink:#1D1D1B; --brand:#FFC20E; --line:#E3E3DF; --muted:#6A6A64; --ice:#F6F6F4; }
   *{ box-sizing:border-box; }
@@ -151,6 +152,7 @@
   <aside class="adminnav">
     <div class="navttl">Beheer</div>
     <a data-sec="overzicht" class="active"><span class="nz">&#9636;</span> Klantenoverzicht</a>
+    <a data-sec="import"><span class="nz">&#128228;</span> Klanten importeren</a>
     <a data-sec="qbr"><span class="nz">&#9998;</span> QBR bewerken</a>
     <a data-sec="koppel"><span class="nz">&#128279;</span> Koppelingen</a>
     <a data-sec="klantstijl"><span class="nz">&#127912;</span> Klant-huisstijl</a>
@@ -190,6 +192,23 @@
       <div class="mhead"><button class="mclose" id="ovModalClose">&times;</button><h3 id="ovmTitle"></h3><div class="msub" id="ovmSub"></div></div>
       <div class="mbody" id="ovmBody"></div>
     </div>
+  </div>
+
+  <div id="importCard" class="card secblock" data-sec="import">
+    <h2>Klanten importeren (Excel)</h2>
+    <p class="hint">Lees alle klanten in één keer in. Bestaat het <b>id</b> al, dan wordt die klant <b>bijgewerkt</b>; is het nieuw, dan wordt een klant <b>aangemaakt</b>. Alleen stamgegevens en koppel-ID's — geen logins of API-sleutels.</p>
+    <ol class="hint" style="font-size:13px;line-height:1.7">
+      <li>Download het sjabloon en vul het in (één klant per rij). Verzin zelf een kort, uniek <b>id</b> per klant (bijv. <code>acme</code>, <code>dejong</code>) — dat blijft de sleutel om later bij te werken.</li>
+      <li>Upload het ingevulde bestand. Je krijgt eerst een <b>voorbeeld</b> te zien.</li>
+      <li>Klik <b>Importeren</b> om door te voeren.</li>
+    </ol>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:12px 0">
+      <button id="tplBtn" class="ghost" style="color:var(--ink);border-color:var(--line)">&#8681; Sjabloon downloaden</button>
+      <input id="impFile" type="file" accept=".xlsx,.xls,.csv">
+    </div>
+    <div id="impPreview"></div>
+    <div id="impConfirmWrap" class="hidden" style="margin-top:14px"><button id="impConfirm">Importeren</button></div>
+    <div id="impMsg"></div>
   </div>
 
   <div id="editCard" class="card secblock" data-sec="qbr">
@@ -361,8 +380,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -520,7 +539,7 @@ const GUIDES = {
 
   freshdesk: { title:'Freshdesk', tag:'prep', tagtxt:'voorbereid', body:`
     <h4>Wat je meet</h4><p>Aantal tickets, SLA en top-categorieën.</p>
-    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>FRESHDESK_DOMAIN</code> — jullie subdomein (bijv. <code>gabberit</code> van <code>gabberit.freshdesk.com</code>)</li><li><code>FRESHDESK_KEY</code> — API-key</li></ul>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>FRESHDESK_DOMAIN</code> — jullie subdomein (het deel v&oacute;&oacute;r <code>.freshdesk.com</code>)</li><li><code>FRESHDESK_KEY</code> — API-key</li></ul>
     <h4>Per klant (Koppelingen)</h4><p>Freshdesk <b>company-id</b> van de klant.</p>
     <h4>Stappen</h4><ol><li>Zet deze integratie <b>aan</b> en vul hierboven het Freshdesk-domein in.</li>
     <li>Haal je API-key op: Freshdesk &rarr; profielicoon &rarr; <b>Profile settings</b> &rarr; <i>Your API Key</i>.</li>
@@ -641,6 +660,64 @@ async function saveIntegrations(){
   const { error } = await sb.from('msp').update({ integrations: obj }).eq('id', mrow.id);
   if(error){ msg($('integrMsg'),'Opslaan mislukt: '+error.message,false); return; }
   _integr = obj; msg($('integrMsg'),'Integraties opgeslagen.',true); applyIntegrToConn();
+}
+
+/* ---- Klanten importeren (Excel) ---- */
+const IMPORT_COLS = ['id','klantnaam','tenant_id','ms_mode','freshdesk_company','itglue_org','grc_client','datto_site','datto_saas','rocketcyber_customer','bullphish_org','slug'];
+const COL_TO_FIELD = { id:'id', klantnaam:'name', name:'name', tenant_id:'tenant_id', ms_mode:'ms_mode', freshdesk_company:'freshdesk_company', itglue_org:'itglue_org', grc_client:'grc_client', datto_site:'datto_site', datto_saas:'datto_saas', rocketcyber_customer:'rocketcyber_customer', bullphish_org:'bullphish_org', slug:'slug' };
+let _impRows = null;
+
+function downloadTemplate(){
+  if(typeof XLSX==='undefined'){ msg($('impMsg'),'Excel-bibliotheek nog niet geladen — ververs de pagina en probeer opnieuw.',false); return; }
+  const ws = XLSX.utils.aoa_to_sheet([ IMPORT_COLS,
+    ['acme','Acme B.V.','00000000-0000-0000-0000-000000000000','test','','','','','','','',''] ]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Klanten');
+  XLSX.writeFile(wb, 'klanten_import_sjabloon.xlsx');
+}
+async function handleImportFile(file){
+  $('impMsg').textContent=''; $('impConfirmWrap').classList.add('hidden'); _impRows=null;
+  if(typeof XLSX==='undefined'){ $('impPreview').innerHTML='<p style="color:#b3261e">Excel-bibliotheek nog niet geladen — ververs de pagina en probeer opnieuw.</p>'; return; }
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { defval:'' });
+    if(!raw.length){ $('impPreview').innerHTML='<p class="hint">Geen rijen gevonden in het bestand.</p>'; return; }
+    // map kolommen -> velden
+    const rows=[]; const errs=[];
+    raw.forEach((r,i)=>{
+      const obj={}; for(const key in r){ const f=COL_TO_FIELD[String(key).trim().toLowerCase()]; if(f){ const v=String(r[key]).trim(); if(v!=='') obj[f]=v; } }
+      if(!obj.id || !obj.name){ errs.push(i+2); return; } // +2: header + 1-index
+      if(!obj.ms_mode) obj.ms_mode='test';
+      rows.push(obj);
+    });
+    // bestaande klanten ophalen om nieuw vs bijwerken te bepalen
+    const { data: existing } = await sb.from('clients').select('id');
+    const have = new Set((existing||[]).map(c=>c.id));
+    let nieuw=0, upd=0; rows.forEach(r=> have.has(r.id)? upd++ : nieuw++);
+    _impRows = rows;
+    let html = `<div class="box" style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fafafa;font-size:13.5px">
+      <b>${rows.length}</b> klant(en) gelezen · <span style="color:#1a7f37"><b>${nieuw}</b> nieuw</span> · <span style="color:#96631a"><b>${upd}</b> bijwerken</span>
+      ${errs.length?`<br><span style="color:#b3261e">${errs.length} rij(en) overgeslagen (id of klantnaam ontbreekt): regel ${errs.join(', ')}</span>`:''}</div>`;
+    html += '<table class="ovtable" style="margin-top:10px"><thead><tr><th class="tleft">id</th><th class="tleft">klantnaam</th><th class="tleft">tenant</th><th>modus</th><th>status</th></tr></thead><tbody>';
+    html += rows.slice(0,30).map(r=>`<tr><td class="cname">${r.id}</td><td style="text-align:left">${r.name}</td><td style="text-align:left;font-size:11px">${r.tenant_id||'\u2014'}</td><td>${r.ms_mode}</td><td>${have.has(r.id)?'<span class="chip a" style="min-width:auto">bijwerken</span>':'<span class="chip g" style="min-width:auto">nieuw</span>'}</td></tr>`).join('');
+    html += '</tbody></table>' + (rows.length>30?`<p class="hint">\u2026 en ${rows.length-30} meer.</p>`:'');
+    $('impPreview').innerHTML = html;
+    if(rows.length) $('impConfirmWrap').classList.remove('hidden');
+  }catch(e){ $('impPreview').innerHTML='<p style="color:#b3261e">Kon bestand niet lezen: '+e.message+'</p>'; }
+}
+async function confirmImport(){
+  if(!_impRows || !_impRows.length) return;
+  // MSP-id ophalen om nieuwe klanten aan de eigen MSP te koppelen
+  const { data: mrow } = await sb.from('msp').select('id').limit(1).maybeSingle();
+  if(!mrow){ msg($('impMsg'),'Geen MSP gevonden voor je account.',false); return; }
+  const payload = _impRows.map(r=>({ ...r, msp_id: mrow.id }));
+  $('impMsg').textContent='Bezig met importeren\u2026';
+  const { error } = await sb.from('clients').upsert(payload, { onConflict:'id' });
+  if(error){ msg($('impMsg'),'Import mislukt: '+error.message,false); return; }
+  msg($('impMsg'),_impRows.length+' klant(en) geïmporteerd.',true);
+  $('impConfirmWrap').classList.add('hidden'); _impRows=null; $('impFile').value='';
+  loadClients(); loadOverview();
 }
 
 /* ---- Klantenoverzicht (strak, kleurgecodeerd, klikbaar detail) ---- */
@@ -929,6 +1006,9 @@ $('brandClientBtn').onclick = saveClientBranding;
 $('integrBtn').onclick = saveIntegrations;
 $('guideClose').onclick = () => $('guideModal').classList.remove('open');
 $('guideModal').onclick = (e) => { if(e.target===$('guideModal')) $('guideModal').classList.remove('open'); };
+$('tplBtn').onclick = downloadTemplate;
+$('impFile').onchange = (e) => { if(e.target.files[0]) handleImportFile(e.target.files[0]); };
+$('impConfirm').onclick = confirmImport;
 $('ovSearch').oninput = () => renderOverview();
 $('ovAtt').onchange = () => renderOverview();
 $('ovModalClose').onclick = () => $('ovModal').classList.remove('open');
