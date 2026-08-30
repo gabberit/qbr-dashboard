@@ -927,8 +927,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -1037,17 +1037,20 @@ async function startApp(){
 
     async function applyBranding(clientId){
       try{
-        const [{ data:msp }, { data:cl }] = await Promise.all([
-          sb.from('msp').select('name,logo_url,vcio').limit(1).single(),
-          sb.from('clients').select('name,logo_url,vcio').eq('id',clientId).single()
+        const [mspRes, clRes] = await Promise.all([
+          sb.from('msp').select('name,logo_url,vcio').limit(1).maybeSingle(),
+          sb.from('clients').select('name,logo_url,vcio').eq('id',clientId).maybeSingle()
         ]);
+        const msp = mspRes && mspRes.data, cl = clRes && clRes.data;
         const logo = (cl&&cl.logo_url) || (msp&&msp.logo_url) || '';
         const vcio = (cl&&cl.vcio) || (msp&&msp.vcio) || (QBR_DATA.meta&&QBR_DATA.meta.vcio) || '';
         const mspName = (msp&&msp.name) || '';
         if(QBR_DATA.meta){ QBR_DATA.meta.vcio = vcio; if(mspName) QBR_DATA.meta.mspName = mspName; }
-        const img=document.querySelector('.topbar .logo img');
-        if(logo){ if(img) img.src=logo; }
-        else if(img && mspName){ img.replaceWith(Object.assign(document.createElement('span'),{className:'wm',textContent:mspName})); }
+        const box = document.querySelector('.topbar .logo');
+        if(box){
+          if(logo){ box.innerHTML = '<img src="'+logo+'" alt="logo" style="height:30px">'; }
+          else if(mspName){ box.innerHTML = '<span class="wm">'+mspName+'</span>'; }
+        }
       }catch(e){ /* branding optioneel; stil laten vallen */ }
     }
     async function loadSnapshot(id){
