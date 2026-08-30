@@ -927,8 +927,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -1033,16 +1033,32 @@ async function startApp(){
     bar.querySelector("#qbrOut").addEventListener("click",async()=>{ await sb.auth.signOut(); location.reload(); });
     bar.querySelector("#qbrPrint").addEventListener("click",()=>window.print());
     const selC=bar.querySelector("#selClient"), selP=bar.querySelector("#selPeriod"), nm=bar.querySelector("#selName");
+    let curClient=null;
 
+    async function applyBranding(clientId){
+      try{
+        const [{ data:msp }, { data:cl }] = await Promise.all([
+          sb.from('msp').select('name,logo_url,vcio').limit(1).single(),
+          sb.from('clients').select('name,logo_url,vcio').eq('id',clientId).single()
+        ]);
+        const logo = (cl&&cl.logo_url) || (msp&&msp.logo_url) || '';
+        const vcio = (cl&&cl.vcio) || (msp&&msp.vcio) || (QBR_DATA.meta&&QBR_DATA.meta.vcio) || '';
+        if(logo){ const img=document.querySelector('.topbar .logo img'); if(img) img.src=logo; }
+        if(QBR_DATA.meta){ QBR_DATA.meta.vcio = vcio; }
+      }catch(e){ /* branding optioneel; stil laten vallen */ }
+    }
     async function loadSnapshot(id){
       st().textContent="laden\u2026";
       const { data, error } = await sb.from("qbr_snapshots").select("data").eq("id",id).single();
       if(error){ st().textContent="fout: "+error.message; return; }
-      QBR_DATA=data.data; renderDashboard();
+      QBR_DATA=data.data;
+      await applyBranding(curClient);
+      renderDashboard();
       if(nm && QBR_DATA.meta) nm.textContent=QBR_DATA.meta.client;
       st().textContent="";
     }
     async function loadPeriods(clientId){
+      curClient=clientId;
       const { data:s } = await sb.from("qbr_snapshots").select("id,quarter,generated_at")
         .eq("client",clientId).eq("status","published").order("generated_at",{ascending:false}).limit(24);
       selP.innerHTML=(s||[]).map(x=>'<option value="'+x.id+'">'+(x.generated_at||'').slice(0,7)+' \u00b7 '+(x.quarter||'')+'</option>').join("");

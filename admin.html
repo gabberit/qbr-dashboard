@@ -142,6 +142,38 @@
     <div id="connMsg"></div>
   </div>
 
+  <div id="brandMspCard" class="card hidden">
+    <h2>Onze huisstijl (MSP)</h2>
+    <p class="hint">Geldt als standaard voor alle klanten. Per klant kun je hieronder afwijken.</p>
+    <label>Bedrijfsnaam</label>
+    <input id="m_name" placeholder="Fivespark">
+    <label style="margin-top:12px">vCIO (standaard)</label>
+    <input id="m_vcio" placeholder="bijv. J. Bakker">
+    <label style="margin-top:12px">Logo</label>
+    <div style="display:flex;gap:14px;align-items:center;margin-top:6px">
+      <img id="m_logoPrev" src="" alt="" style="height:40px;max-width:180px;object-fit:contain;background:#fff;border:1px solid #eee;border-radius:6px;padding:4px;display:none">
+      <input id="m_logoFile" type="file" accept="image/*">
+    </div>
+    <div style="margin-top:16px"><button id="brandMspBtn">Huisstijl opslaan</button></div>
+    <div id="brandMspMsg"></div>
+  </div>
+
+  <div id="brandClientCard" class="card hidden">
+    <h2>Klant-huisstijl</h2>
+    <p class="hint">Voor de geselecteerde klant. Laat leeg om de MSP-standaard te gebruiken.</p>
+    <label>Klantnaam (zoals getoond in de QBR)</label>
+    <input id="k_name" placeholder="Klantnaam">
+    <label style="margin-top:12px">vCIO voor deze klant</label>
+    <input id="k_vcio" placeholder="laat leeg voor MSP-standaard">
+    <label style="margin-top:12px">Klant-logo (optioneel)</label>
+    <div style="display:flex;gap:14px;align-items:center;margin-top:6px">
+      <img id="k_logoPrev" src="" alt="" style="height:40px;max-width:180px;object-fit:contain;background:#fff;border:1px solid #eee;border-radius:6px;padding:4px;display:none">
+      <input id="k_logoFile" type="file" accept="image/*">
+    </div>
+    <div style="margin-top:16px"><button id="brandClientBtn">Klant-huisstijl opslaan</button></div>
+    <div id="brandClientMsg"></div>
+  </div>
+
   <div id="accessCard" class="card hidden">
     <h2>Klant-toegang (login koppelen)</h2>
     <p class="hint">Maak het account eerst aan in Supabase (Authentication &rarr; Users &rarr; Add user), kopieer de User&nbsp;UID, kies het bedrijf en klik Koppelen. De klant ziet daarna alleen dit bedrijf.</p>
@@ -158,8 +190,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -180,7 +212,7 @@ async function doLogout(){ await sb.auth.signOut(); }
 async function onSession(session){
   if(!session){
     show($('loginCard'), true);
-    ['appCard','editCard','accessCard','connCard','overviewCard','logout'].forEach(id=>show($(id), false));
+    ['appCard','editCard','accessCard','connCard','overviewCard','brandMspCard','brandClientCard','logout'].forEach(id=>show($(id), false));
     $('who').textContent=''; return;
   }
   // Alleen managers (lid van een MSP) mogen het admin-paneel in.
@@ -188,15 +220,66 @@ async function onSession(session){
   const isManager = !error && msp && msp.length;
   if(!isManager){
     await sb.auth.signOut();
-    ['appCard','editCard','accessCard','connCard','overviewCard','logout'].forEach(id=>show($(id), false));
+    ['appCard','editCard','accessCard','connCard','overviewCard','brandMspCard','brandClientCard','logout'].forEach(id=>show($(id), false));
     show($('loginCard'), true);
     msg($('loginMsg'),'Dit beheerpaneel is alleen voor Fivespark-beheerders. Dit account heeft geen toegang.',false);
     return;
   }
-  ['appCard','editCard','accessCard','connCard','overviewCard','logout'].forEach(id=>show($(id), true));
+  ['appCard','editCard','accessCard','connCard','overviewCard','brandMspCard','brandClientCard','logout'].forEach(id=>show($(id), true));
   show($('loginCard'), false);
   $('who').textContent = session.user.email;
-  loadClients(); initAccess(); loadOverview();
+  loadClients(); initAccess(); loadOverview(); loadMspBranding();
+}
+
+/* ---- Huisstijl (logo-upload naar Storage, MSP + klant) ---- */
+let _mspId = null;
+async function uploadLogo(file, prefix){
+  const ext = (file.name.split('.').pop()||'png').toLowerCase();
+  const path = prefix + '-' + Date.now() + '.' + ext;
+  const { error } = await sb.storage.from('branding').upload(path, file, { upsert:true, cacheControl:'3600' });
+  if(error) throw error;
+  return sb.storage.from('branding').getPublicUrl(path).data.publicUrl;
+}
+function setPrev(imgEl, url){ if(url){ imgEl.src=url; imgEl.style.display='block'; } else { imgEl.style.display='none'; } }
+
+async function loadMspBranding(){
+  const { data, error } = await sb.from('msp').select('id,name,logo_url,vcio').limit(1).single();
+  if(error){ msg($('brandMspMsg'),'Kan huisstijl niet laden: '+error.message,false); return; }
+  _mspId = data.id;
+  $('m_name').value = data.name||''; $('m_vcio').value = data.vcio||'';
+  $('m_logoPrev').dataset.url = data.logo_url||''; setPrev($('m_logoPrev'), data.logo_url);
+}
+async function saveMspBranding(){
+  if(!_mspId){ msg($('brandMspMsg'),'MSP niet geladen.',false); return; }
+  let logo_url = $('m_logoPrev').dataset.url || null;
+  try{
+    const f=$('m_logoFile').files[0];
+    if(f){ msg($('brandMspMsg'),'Logo uploaden\u2026',true); logo_url = await uploadLogo(f,'msp/'+_mspId); }
+    const { error } = await sb.from('msp').update({ name:$('m_name').value.trim(), vcio:$('m_vcio').value.trim()||null, logo_url }).eq('id',_mspId);
+    if(error) throw error;
+    $('m_logoPrev').dataset.url=logo_url||''; setPrev($('m_logoPrev'),logo_url); $('m_logoFile').value='';
+    msg($('brandMspMsg'),'Huisstijl opgeslagen.',true);
+  }catch(e){ msg($('brandMspMsg'),'Opslaan mislukt: '+e.message,false); }
+}
+
+async function loadClientBranding(clientId){
+  if(!clientId) return;
+  const { data, error } = await sb.from('clients').select('name,logo_url,vcio').eq('id',clientId).single();
+  if(error){ msg($('brandClientMsg'),'Kan klant-huisstijl niet laden: '+error.message,false); return; }
+  $('k_name').value=data.name||''; $('k_vcio').value=data.vcio||'';
+  $('k_logoPrev').dataset.url=data.logo_url||''; setPrev($('k_logoPrev'),data.logo_url);
+}
+async function saveClientBranding(){
+  const clientId=$('client').value; if(!clientId) return;
+  let logo_url=$('k_logoPrev').dataset.url||null;
+  try{
+    const f=$('k_logoFile').files[0];
+    if(f){ msg($('brandClientMsg'),'Logo uploaden\u2026',true); logo_url=await uploadLogo(f,'client/'+clientId); }
+    const { error } = await sb.from('clients').update({ name:$('k_name').value.trim(), vcio:$('k_vcio').value.trim()||null, logo_url }).eq('id',clientId);
+    if(error) throw error;
+    $('k_logoPrev').dataset.url=logo_url||''; setPrev($('k_logoPrev'),logo_url); $('k_logoFile').value='';
+    msg($('brandClientMsg'),'Klant-huisstijl opgeslagen.',true); loadOverview();
+  }catch(e){ msg($('brandClientMsg'),'Opslaan mislukt: '+e.message,false); }
 }
 
 /* ---- Klantenoverzicht (cijfers, sorteren, filteren) ---- */
@@ -363,6 +446,7 @@ async function loadClients(){
   $('client').innerHTML = data.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   loadSnapshot($('client').value);
   loadConnections($('client').value);
+  loadClientBranding($('client').value);
 }
 async function loadSnapshot(clientId){
   const { data, error } = await sb.from('qbr_snapshots')
@@ -440,8 +524,10 @@ $('password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 $('forgot').onclick = doForgot;
 $('npBtn').onclick = doNewPw;
 $('logout').onclick = doLogout;
-$('client').onchange = e => { loadSnapshot(e.target.value); loadConnections(e.target.value); };
+$('client').onchange = e => { loadSnapshot(e.target.value); loadConnections(e.target.value); loadClientBranding(e.target.value); };
 $('connBtn').onclick = saveConnections;
+$('brandMspBtn').onclick = saveMspBranding;
+$('brandClientBtn').onclick = saveClientBranding;
 $('ovSearch').oninput = () => renderOverview();
 $('ovAtt').onchange = () => renderOverview();
 $('addAction').onclick = () => $('acties').appendChild(actionRow());
