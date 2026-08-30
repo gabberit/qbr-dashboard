@@ -80,6 +80,26 @@
   .mbody td{ padding:7px 8px; border-bottom:1px solid #f1f1ef; vertical-align:top; }
   .mclose{ position:absolute; top:16px; right:18px; background:none; border:0; font-size:22px; cursor:pointer; color:#999; width:auto; padding:0; }
   .mlead{ font-size:13.5px; color:#444; margin:0 0 14px; }
+  /* Integraties */
+  .introw{ display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--line); border-radius:12px; margin-bottom:10px; background:#fff; transition:.15s; }
+  .introw.off{ opacity:.55; background:#fafafa; }
+  .introw .intmain{ flex:1; min-width:0; }
+  .introw .intname{ font-weight:700; font-size:14.5px; }
+  .introw .inthint{ font-size:12.5px; color:var(--muted); margin-top:1px; }
+  .introw .intset{ margin-top:8px; }
+  .introw .intset input{ max-width:320px; margin:0; }
+  .intbadge{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .intbadge.on{ background:#e6f4ea; color:#1a7f37; } .intbadge.offb{ background:#f0f0ee; color:#8a8a84; } .intbadge.lock{ background:#fdf0dd; color:#96631a; }
+  /* Toggle-switch */
+  .sw{ position:relative; width:44px; height:26px; flex:0 0 auto; }
+  .sw input{ opacity:0; width:0; height:0; position:absolute; }
+  .sw .track{ position:absolute; inset:0; background:#cfcfca; border-radius:999px; transition:.18s; cursor:pointer; }
+  .sw .track::before{ content:""; position:absolute; width:20px; height:20px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.18s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+  .sw input:checked + .track{ background:var(--brand); }
+  .sw input:checked + .track::before{ transform:translateX(18px); }
+  .sw input:disabled + .track{ opacity:.6; cursor:not-allowed; }
+  .modebox{ border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:18px; background:#fff; }
+  .modebox h3{ margin:0 0 4px; font-size:15px; }
 </style>
 </head>
 <body>
@@ -246,6 +266,17 @@
   <div id="integrCard" class="card secblock" data-sec="integraties">
     <h2>Integraties (MSP-breed)</h2>
     <p class="hint">Zet aan welke integraties jullie als MSP gebruiken. Alleen ingeschakelde integraties verschijnen bij de per-klant-koppelingen. De <b>API-sleutels</b> worden server-side beheerd (nooit in deze pagina).</p>
+
+    <div class="modebox">
+      <h3>Microsoft-koppelmodus (standaard)</h3>
+      <p class="hint" style="margin:0 0 10px">Geldt als standaard voor alle klanten. Per klant kun je hiervan afwijken bij Koppelingen.</p>
+      <select id="mspMsMode" style="max-width:420px">
+        <option value="test">Test-tenant (app-only) — veilig, huidige werkwijze</option>
+        <option value="gdap">GDAP naar echte klant-tenants (productie)</option>
+      </select>
+      <div class="hint" style="margin-top:6px">GDAP levert pas data zodra de multi-tenant app via GDAP is geconsenteerd in de klant-tenants. Zet dit pas MSP-breed om als die basis staat.</div>
+    </div>
+
     <div id="integrList"></div>
     <div style="margin-top:16px"><button id="integrBtn">Integraties opslaan</button></div>
     <div id="integrMsg"></div>
@@ -312,8 +343,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -448,21 +479,34 @@ async function loadIntegrations(){
   const { data, error } = await sb.from('msp').select('integrations').limit(1).maybeSingle();
   if(error){ msg($('integrMsg'),'Kan integraties niet laden: '+error.message+ (/column/.test(error.message)?' \u2014 draai schema_integrations.sql.':''),false); }
   _integr = (data && data.integrations) || {};
+  if($('mspMsMode')) $('mspMsMode').value = _integr._msMode || 'test';
   renderIntegrations();
   applyIntegrToConn();
 }
 function renderIntegrations(){
   $('integrList').innerHTML = INTEGRATIONS.map(it=>{
     const on = integrOn(it.key);
-    const set = it.setting ? `<input id="${it.setting.id}" placeholder="${it.setting.label}" style="margin-top:8px;max-width:340px" value="${(_integr[it.key]&&_integr[it.key].domain)||''}">` : '';
-    return `<div style="display:flex;flex-direction:column;gap:2px;padding:12px 0;border-bottom:1px solid var(--line)">
-      <label style="display:flex;gap:10px;align-items:center;margin:0;cursor:${it.always?'default':'pointer'}">
-        <input type="checkbox" data-integr="${it.key}" ${on?'checked':''} ${it.always?'disabled':''}>
-        <span style="font-weight:700">${it.label}</span>
-        <span class="hint" style="margin:0">${it.hint}${it.always?' · altijd aan':''}</span>
-      </label>${set}</div>`;
+    const set = it.setting ? `<div class="intset"><input id="${it.setting.id}" placeholder="${it.setting.label}" value="${(_integr[it.key]&&_integr[it.key].domain)||''}"></div>` : '';
+    const badge = it.always ? '<span class="intbadge lock">altijd aan</span>'
+                 : `<span class="intbadge ${on?'on':'offb'}" data-badge="${it.key}">${on?'actief':'uit'}</span>`;
+    return `<div class="introw${(!on&&!it.always)?' off':''}" data-row="${it.key}">
+      <label class="sw"><input type="checkbox" data-integr="${it.key}" ${on?'checked':''} ${it.always?'disabled':''}><span class="track"></span></label>
+      <div class="intmain">
+        <div class="intname">${it.label}</div>
+        <div class="inthint">${it.hint}</div>
+        ${set}
+      </div>
+      ${badge}
+    </div>`;
   }).join('');
-  $('integrList').querySelectorAll('input[type=checkbox][data-integr]').forEach(c=> c.onchange=()=>applyIntegrToConn(true));
+  $('integrList').querySelectorAll('input[type=checkbox][data-integr]').forEach(c=> c.onchange=()=>{
+    const key=c.getAttribute('data-integr');
+    const row=$('integrList').querySelector('.introw[data-row="'+key+'"]');
+    const badge=$('integrList').querySelector('.intbadge[data-badge="'+key+'"]');
+    if(row) row.classList.toggle('off', !c.checked);
+    if(badge){ badge.textContent=c.checked?'actief':'uit'; badge.className='intbadge '+(c.checked?'on':'offb'); badge.setAttribute('data-badge',key); }
+    applyIntegrToConn(true);
+  });
 }
 function applyIntegrToConn(fromToggle){
   // welke integraties staan (in de UI) aan?
@@ -480,6 +524,7 @@ function applyIntegrToConn(fromToggle){
 }
 async function saveIntegrations(){
   const obj={};
+  if($('mspMsMode')) obj._msMode = $('mspMsMode').value || 'test';
   INTEGRATIONS.forEach(it=>{
     const cb=$('integrList').querySelector('input[data-integr="'+it.key+'"]');
     const on = it.always ? true : (cb ? cb.checked : true);
@@ -626,7 +671,7 @@ async function loadConnections(clientId){
   const { data, error } = await sb.from('clients').select(cols).eq('id', clientId).single();
   if(error){ msg($('connMsg'),'Kan koppelingen niet laden: '+error.message,false); return; }
   for(const el in CONN_FIELDS){ $(el).value = data[CONN_FIELDS[el]] || ''; }
-  $('c_msmode').value = data.ms_mode || 'test';
+  $('c_msmode').value = data.ms_mode || (_integr && _integr._msMode) || 'test';
   applyIntegrToConn();
   msg($('connMsg'),'',true);
 }
