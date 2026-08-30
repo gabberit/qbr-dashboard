@@ -71,7 +71,14 @@
 
   <div id="overviewCard" class="card hidden">
     <h2>Klantenoverzicht</h2>
-    <p class="hint">Klik een klant om die te bewerken. Groen&nbsp;&#10003; = koppeling ingevuld, &mdash; = nog leeg.</p>
+    <p class="hint">Klik een kolomkop om te sorteren (laagste eerst; nogmaals klikken keert om). Klik een rij om die klant te bewerken. &laquo;&mdash;&raquo; = bron nog niet gekoppeld, staat altijd onderaan bij sorteren.</p>
+    <div style="display:flex;gap:12px;align-items:center;margin:10px 0 14px;flex-wrap:wrap">
+      <input id="ovSearch" placeholder="Zoek op klantnaam\u2026" style="flex:1;min-width:200px;padding:9px 11px;border:1px solid #ddd;border-radius:8px">
+      <label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer;user-select:none">
+        <input id="ovAtt" type="checkbox"> Alleen aandachtspunten
+      </label>
+      <span id="ovCount" class="hint" style="margin:0"></span>
+    </div>
     <div id="ovWrap" style="overflow-x:auto"><div id="ovTable" class="hint">Laden&hellip;</div></div>
   </div>
 
@@ -151,8 +158,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -192,43 +199,100 @@ async function onSession(session){
   loadClients(); initAccess(); loadOverview();
 }
 
-/* ---- Klantenoverzicht ---- */
-const OV_SOURCES = [
-  ['tenant_id','Microsoft'], ['freshdesk_company','Freshdesk'], ['itglue_org','IT Glue'],
-  ['grc_client','GRC'], ['datto_site','Datto'], ['rocketcyber_customer','RocketCyber'], ['bullphish_org','Awareness']
-];
+/* ---- Klantenoverzicht (cijfers, sorteren, filteren) ---- */
 function selectClient(id){
   $('client').value = id; loadSnapshot(id); loadConnections(id);
   document.getElementById('editCard').scrollIntoView({behavior:'smooth', block:'start'});
 }
+function ovNum(v){ if(v==null) return NaN; const mt=String(v).match(/-?\d+(\.\d+)?/); return mt? parseFloat(mt[0]) : NaN; }
+function ovMetrics(d){
+  const sc={}; (d.scorecard||[]).forEach(t=>{ if(t.det) sc[t.det]=t.val; });
+  const lic=lbl=>(((d.licenties?.stats)||[]).find(s=>(s.lbl||'').toLowerCase().startsWith(lbl))||{}).val || '\u2014';
+  const soc=(((d.mdr?.stats)||[]).find(s=>/incident/i.test(s.lbl||''))||{}).val || '\u2014';
+  const ai=d.aiDuiding?.concept ? (d.aiDuiding.concept.slice(0,90)+(d.aiDuiding.concept.length>90?'\u2026':'')) : '\u2014';
+  return {
+    secure:sc.secure||'\u2014', identity:sc.mfa||'\u2014', nis2:sc.nis2||'\u2014', vuln:sc.vuln||'\u2014',
+    phish:sc.phish||'\u2014', dlp:sc.dlp||'\u2014', aware:sc.aware||'\u2014', patch:sc.patch||'\u2014',
+    licP:lic('aangeschaft'), licT:lic('toegewezen'), licU:lic('ongebruikt'),
+    tickets:d.service?.totaal?.val||'\u2014', sla:d.service?.sla?.val||'\u2014',
+    hw:(d._hardware? (d._hardware.eol+'/'+d._hardware.total) : '\u2014'), soc, ai
+  };
+}
+const OV_COLS = [
+  ['secure','Secure'], ['identity','Identity'], ['nis2','NIS2'], ['vuln','Kwetsb.'],
+  ['phish','Phishing'], ['dlp','DLP'], ['aware','Phish-prone'], ['patch','Patch'],
+  ['licP','Lic aang.'], ['licT','Lic toegew.'], ['licU','Lic ongebr.'],
+  ['tickets','Tickets'], ['sla','SLA'], ['hw','HW EOL'], ['soc','SOC']
+];
+let _ovRows = [];           // {id,name,per,date,m,n,att}
+let _ovSort = { key:null, dir:1 };
+
 async function loadOverview(){
-  const cols = 'id,name,'+OV_SOURCES.map(s=>s[0]).join(',');
-  const { data: cl, error } = await sb.from('clients').select(cols).order('name');
-  if(error){ $('ovTable').textContent = 'Kan overzicht niet laden: '+error.message; return; }
-  if(!cl || !cl.length){ $('ovTable').textContent = 'Nog geen klanten.'; return; }
-  // Laatste periode per klant (één lichte query, zonder de zware data-kolom)
-  const { data: snaps } = await sb.from('qbr_snapshots').select('client,quarter,generated_at')
-    .eq('status','published').order('generated_at',{ascending:false});
-  const last = {};
-  (snaps||[]).forEach(s=>{ if(!last[s.client]) last[s.client] = (s.generated_at||'').slice(0,7)+' \u00b7 '+(s.quarter||''); });
-  const yes = '<span style="color:#1a7f37;font-weight:700">\u2713</span>';
-  const no  = '<span style="color:#bbb">\u2014</span>';
-  const th = s => `<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #eee;font-size:12px;white-space:nowrap">${s}</th>`;
-  const td = (h,extra='') => `<td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;${extra}">${h}</td>`;
-  let html = '<table style="border-collapse:collapse;width:100%;min-width:720px"><thead><tr>'
-    + th('Klant') + OV_SOURCES.map(s=>th(s[1])).join('') + th('Laatste periode') + '</tr></thead><tbody>';
-  for(const c of cl){
-    html += '<tr class="ovRow" data-id="'+c.id+'" style="cursor:pointer">'
-      + td('<b>'+c.name+'</b>','white-space:nowrap')
-      + OV_SOURCES.map(s=>td((c[s[0]]? yes : no),'text-align:center')).join('')
-      + td(last[c.id] || '<span style="color:#bbb">geen data</span>')
-      + '</tr>';
+  const { data: cl, error } = await sb.from('clients').select('id,name').order('name');
+  if(error){ $('ovTable').textContent='Kan overzicht niet laden: '+error.message; return; }
+  if(!cl || !cl.length){ $('ovTable').textContent='Nog geen klanten.'; return; }
+  $('ovTable').textContent='Laden\u2026';
+  const raw = await Promise.all(cl.map(async c=>{
+    const { data:s } = await sb.from('qbr_snapshots').select('data,quarter,generated_at')
+      .eq('client',c.id).eq('status','published').order('generated_at',{ascending:false}).limit(1);
+    return { c, snap:(s&&s[0])||null };
+  }));
+  _ovRows = raw.map(({c,snap})=>{
+    const m = snap ? ovMetrics(snap.data) : null;
+    const n = {}; OV_COLS.forEach(col=> n[col[0]] = m ? ovNum(m[col[0]]) : NaN);
+    // Aandachtspunt: lage Secure/Identity, ongebruikte licenties, of EOL-hardware
+    const att = m ? ((isFinite(n.secure)&&n.secure<50) || (isFinite(n.identity)&&n.identity<50)
+                     || (isFinite(n.licU)&&n.licU>0) || (isFinite(n.hw)&&n.hw>0)) : false;
+    return { id:c.id, name:c.name, date:(snap?.generated_at)||'',
+      per: snap ? ((snap.generated_at||'').slice(0,7)+' \u00b7 '+(snap.quarter||'')) : null,
+      m, n, att };
+  });
+  renderOverview();
+}
+function renderOverview(){
+  const term = ($('ovSearch').value||'').trim().toLowerCase();
+  const attOnly = $('ovAtt').checked;
+  let rows = _ovRows.filter(r=> (!term || r.name.toLowerCase().includes(term)) && (!attOnly || r.att));
+  // Sorteren; NaN/lege waarden altijd onderaan
+  const k=_ovSort.key, dir=_ovSort.dir;
+  if(k){
+    rows = rows.slice().sort((a,b)=>{
+      let av,bv;
+      if(k==='name'){ av=a.name.toLowerCase(); bv=b.name.toLowerCase(); return av<bv?-dir:av>bv?dir:0; }
+      if(k==='per'){ av=a.date||''; bv=b.date||''; return av<bv?-dir:av>bv?dir:0; }
+      av=a.n[k]; bv=b.n[k];
+      const aN=!isFinite(av), bN=!isFinite(bv);
+      if(aN&&bN) return 0; if(aN) return 1; if(bN) return -1;   // lege altijd onderaan
+      return (av-bv)*dir;
+    });
   }
-  html += '</tbody></table>';
+  const arrow = key => _ovSort.key===key ? (_ovSort.dir===1?' \u25B2':' \u25BC') : '';
+  const thBase='padding:6px 9px;border-bottom:2px solid #eee;font-size:11.5px;white-space:nowrap;cursor:pointer;user-select:none';
+  const th=(key,label,extra='')=>`<th data-sort="${key}" style="text-align:left;${thBase};${extra}">${label}${arrow(key)}</th>`;
+  const td=(h,extra='')=>`<td style="padding:6px 9px;border-bottom:1px solid #f0f0f0;font-size:12.5px;${extra}">${h}</td>`;
+  let html='<table style="border-collapse:collapse;width:100%;min-width:1100px"><thead><tr>'
+    + th('name','Klant','position:sticky;left:0;background:#fff') + th('per','Periode')
+    + OV_COLS.map(c=>th(c[0],c[1],'text-align:center')).join('')
+    + `<th style="text-align:left;${thBase.replace('cursor:pointer;','')};cursor:default">AI-duiding</th>` + '</tr></thead><tbody>';
+  for(const r of rows){
+    html += '<tr class="ovRow" data-id="'+r.id+'" style="cursor:pointer">'
+      + td('<b>'+r.name+'</b>','white-space:nowrap;position:sticky;left:0;background:#fff')
+      + td(r.per || '<span style="color:#bbb">geen data</span>','white-space:nowrap')
+      + OV_COLS.map(col=>td(r.m? r.m[col[0]] : '\u2014','text-align:center;white-space:nowrap')).join('')
+      + td(r.m? r.m.ai : '\u2014','max-width:280px;color:#555') + '</tr>';
+  }
+  html+='</tbody></table>';
   $('ovTable').innerHTML = html;
+  $('ovCount').textContent = rows.length + ' van ' + _ovRows.length + ' klanten';
   $('ovTable').querySelectorAll('.ovRow').forEach(r=>{
     r.onmouseenter=()=>r.style.background='#faf7ec'; r.onmouseleave=()=>r.style.background='';
     r.onclick=()=>selectClient(r.getAttribute('data-id'));
+  });
+  $('ovTable').querySelectorAll('th[data-sort]').forEach(h=>{
+    h.onclick=()=>{ const key=h.getAttribute('data-sort');
+      if(_ovSort.key===key) _ovSort.dir*=-1; else { _ovSort.key=key; _ovSort.dir=1; }
+      renderOverview();
+    };
   });
 }
 
@@ -378,6 +442,8 @@ $('npBtn').onclick = doNewPw;
 $('logout').onclick = doLogout;
 $('client').onchange = e => { loadSnapshot(e.target.value); loadConnections(e.target.value); };
 $('connBtn').onclick = saveConnections;
+$('ovSearch').oninput = () => renderOverview();
+$('ovAtt').onchange = () => renderOverview();
 $('addAction').onclick = () => $('acties').appendChild(actionRow());
 $('saveBtn').onclick = doSave;
 
