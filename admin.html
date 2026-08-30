@@ -27,6 +27,22 @@
   .msg.err{ background:#FDECEA; color:#C0392B; }
   .hidden{ display:none; }
   h1{ font-size:19px; margin:0 0 4px; } h2{ font-size:15px; margin:0 0 2px; }
+  /* Sidebar-layout */
+  .adminshell{ display:grid; grid-template-columns:230px 1fr; min-height:calc(100vh - 52px); }
+  .adminnav{ background:#fff; border-right:1px solid var(--line); padding:20px 12px; }
+  .adminnav .navttl{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:6px 10px 10px; }
+  .adminnav a{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; color:var(--ink); text-decoration:none; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:3px; }
+  .adminnav a:hover{ background:var(--ice); }
+  .adminnav a.active{ background:var(--ink); color:#fff; }
+  .adminnav a.active .nz{ color:var(--brand); }
+  .adminnav .nz{ font-size:15px; width:20px; text-align:center; }
+  .adminmain{ padding:26px 30px; max-width:1200px; }
+  .adminmain .card{ max-width:820px; }
+  #overviewCard{ max-width:none; }
+  .clientpick{ display:flex; gap:10px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:16px; }
+  .clientpick label{ margin:0; white-space:nowrap; }
+  .clientpick select{ max-width:340px; }
+  @media (max-width:820px){ .adminshell{ grid-template-columns:1fr; } .adminnav{ border-right:0; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:4px; } .adminnav .navttl{ display:none; } }
 </style>
 </head>
 <body>
@@ -37,7 +53,7 @@
   <button id="logout" class="ghost hidden">Uitloggen</button>
 </header>
 
-<div class="wrap">
+<div class="wrap" id="loginWrap">
   <!-- LOGIN -->
   <div id="loginCard" class="card">
     <h1>Inloggen</h1>
@@ -60,16 +76,27 @@
     <div style="margin-top:14px"><button id="npBtn">Opslaan</button></div>
     <div id="npMsg"></div>
   </div>
+</div>
 
-  <!-- APP -->
-  <div id="appCard" class="card hidden">
-    <h1>QBR bewerken</h1>
-    <label>Klant</label>
-    <select id="client"></select>
-    <div id="period" class="hint"></div>
-  </div>
+<div id="adminShell" class="adminshell hidden">
+  <aside class="adminnav">
+    <div class="navttl">Beheer</div>
+    <a data-sec="overzicht" class="active"><span class="nz">&#9636;</span> Klantenoverzicht</a>
+    <a data-sec="qbr"><span class="nz">&#9998;</span> QBR bewerken</a>
+    <a data-sec="koppel"><span class="nz">&#128279;</span> Koppelingen</a>
+    <a data-sec="klantstijl"><span class="nz">&#127912;</span> Klant-huisstijl</a>
+    <a data-sec="toegang"><span class="nz">&#128273;</span> Klant-toegang</a>
+    <div class="navttl" style="margin-top:18px">Organisatie</div>
+    <a data-sec="mspstijl"><span class="nz">&#9733;</span> Onze huisstijl</a>
+  </aside>
+  <main class="adminmain">
+    <div id="clientPick" class="clientpick">
+      <label>Klant</label>
+      <select id="client"></select>
+      <span id="period" class="hint" style="margin:0"></span>
+    </div>
 
-  <div id="overviewCard" class="card hidden">
+  <div id="overviewCard" class="card secblock" data-sec="overzicht">
     <h2>Klantenoverzicht</h2>
     <p class="hint">Klik een kolomkop om te sorteren (laagste eerst; nogmaals klikken keert om). Klik een rij om die klant te bewerken. &laquo;&mdash;&raquo; = bron nog niet gekoppeld, staat altijd onderaan bij sorteren.</p>
     <div style="display:flex;gap:12px;align-items:center;margin:10px 0 14px;flex-wrap:wrap">
@@ -82,7 +109,7 @@
     <div id="ovWrap" style="overflow-x:auto"><div id="ovTable" class="hint">Laden&hellip;</div></div>
   </div>
 
-  <div id="editCard" class="card hidden">
+  <div id="editCard" class="card secblock" data-sec="qbr">
     <h2>Besluiten</h2>
     <p class="hint">Eén besluit per regel. Verschijnt in sectie &laquo;Besluiten &amp; acties&raquo;.</p>
     <textarea id="besluiten" placeholder="Budget vrijgemaakt voor upgrade naar Business Premium&#10;Servermigratie ingepland voor Q4"></textarea>
@@ -107,7 +134,7 @@
     <div id="saveMsg"></div>
   </div>
 
-  <div id="connCard" class="card hidden">
+  <div id="connCard" class="card secblock" data-sec="koppel">
     <h2>Koppelingen (per klant)</h2>
     <p class="hint">Alleen verwijzingen/ID's — geen wachtwoorden of API-sleutels (die horen server-side). Status: <span style="color:#1a7f37;font-weight:600">werkend</span> = gekoppeld en getest · <span style="color:#B7791F;font-weight:600">voorbereid</span> = veld staat klaar, bron nog te activeren.</p>
 
@@ -142,7 +169,7 @@
     <div id="connMsg"></div>
   </div>
 
-  <div id="brandMspCard" class="card hidden">
+  <div id="brandMspCard" class="card secblock" data-sec="mspstijl">
     <h2>Onze huisstijl (MSP)</h2>
     <p class="hint">Geldt als standaard voor alle klanten. Per klant kun je hieronder afwijken.</p>
     <label>Bedrijfsnaam</label>
@@ -158,7 +185,7 @@
     <div id="brandMspMsg"></div>
   </div>
 
-  <div id="brandClientCard" class="card hidden">
+  <div id="brandClientCard" class="card secblock" data-sec="klantstijl">
     <h2>Klant-huisstijl</h2>
     <p class="hint">Voor de geselecteerde klant. Laat leeg om de MSP-standaard te gebruiken.</p>
     <label>Klantnaam (zoals getoond in de QBR)</label>
@@ -174,7 +201,7 @@
     <div id="brandClientMsg"></div>
   </div>
 
-  <div id="accessCard" class="card hidden">
+  <div id="accessCard" class="card secblock" data-sec="toegang">
     <h2>Klant-toegang (login koppelen)</h2>
     <p class="hint">Maak het account eerst aan in Supabase (Authentication &rarr; Users &rarr; Add user), kopieer de User&nbsp;UID, kies het bedrijf en klik Koppelen. De klant ziet daarna alleen dit bedrijf.</p>
     <label>Bedrijf</label>
@@ -186,12 +213,13 @@
     <h2 style="margin-top:22px;font-size:15px">Gekoppelde accounts voor dit bedrijf</h2>
     <div id="accList" class="hint">—</div>
   </div>
+  </main>
 </div>
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -209,25 +237,39 @@ async function doLogin(){
 }
 async function doLogout(){ await sb.auth.signOut(); }
 
+// Welke secties tonen de klant-kiezer bovenaan
+const SECTIONS_WITH_CLIENT = ['qbr','koppel','klantstijl'];
+function showSection(sec){
+  document.querySelectorAll('.secblock').forEach(el=> el.classList.toggle('hidden', el.getAttribute('data-sec')!==sec));
+  document.querySelectorAll('.adminnav a').forEach(a=> a.classList.toggle('active', a.getAttribute('data-sec')===sec));
+  show($('clientPick'), SECTIONS_WITH_CLIENT.includes(sec));
+}
+function initNav(){
+  document.querySelectorAll('.adminnav a').forEach(a=>{
+    a.onclick = ()=> showSection(a.getAttribute('data-sec'));
+  });
+  showSection('overzicht');
+}
+
 async function onSession(session){
   if(!session){
-    show($('loginCard'), true);
-    ['appCard','editCard','accessCard','connCard','overviewCard','brandMspCard','brandClientCard','logout'].forEach(id=>show($(id), false));
-    $('who').textContent=''; return;
+    show($('loginWrap'), true); show($('loginCard'), true); show($('adminShell'), false);
+    show($('logout'), false); $('who').textContent=''; return;
   }
   // Alleen managers (lid van een MSP) mogen het admin-paneel in.
   const { data: msp, error } = await sb.from('msp_members').select('msp_id').limit(1);
   const isManager = !error && msp && msp.length;
   if(!isManager){
     await sb.auth.signOut();
-    ['appCard','editCard','accessCard','connCard','overviewCard','brandMspCard','brandClientCard','logout'].forEach(id=>show($(id), false));
-    show($('loginCard'), true);
+    show($('adminShell'), false); show($('logout'), false);
+    show($('loginWrap'), true); show($('loginCard'), true);
     msg($('loginMsg'),'Dit beheerpaneel is alleen voor Fivespark-beheerders. Dit account heeft geen toegang.',false);
     return;
   }
-  ['appCard','editCard','accessCard','connCard','overviewCard','brandMspCard','brandClientCard','logout'].forEach(id=>show($(id), true));
-  show($('loginCard'), false);
+  show($('loginWrap'), false); show($('loginCard'), false);
+  show($('adminShell'), true); show($('logout'), true);
   $('who').textContent = session.user.email;
+  initNav();
   loadClients(); initAccess(); loadOverview(); loadMspBranding();
 }
 
@@ -243,8 +285,12 @@ async function uploadLogo(file, prefix){
 function setPrev(imgEl, url){ if(url){ imgEl.src=url; imgEl.style.display='block'; } else { imgEl.style.display='none'; } }
 
 async function loadMspBranding(){
-  const { data, error } = await sb.from('msp').select('id,name,logo_url,vcio').limit(1).single();
-  if(error){ msg($('brandMspMsg'),'Kan huisstijl niet laden: '+error.message,false); return; }
+  const { data, error } = await sb.from('msp').select('id,name,logo_url,vcio').limit(1).maybeSingle();
+  if(error){
+    const hint = /column .* does not exist/i.test(error.message) ? ' \u2014 draai eerst schema_branding.sql in Supabase.' : '';
+    msg($('brandMspMsg'),'Kan huisstijl niet laden: '+error.message+hint,false); return;
+  }
+  if(!data){ msg($('brandMspMsg'),'Geen MSP gekoppeld aan je account (msp_members).',false); return; }
   _mspId = data.id;
   $('m_name').value = data.name||''; $('m_vcio').value = data.vcio||'';
   $('m_logoPrev').dataset.url = data.logo_url||''; setPrev($('m_logoPrev'), data.logo_url);
@@ -505,8 +551,8 @@ async function doForgot(e){
   msg($('loginMsg'),'Herstellink gestuurd naar '+email+' (controleer ook spam).',true);
 }
 function showRecovery(){
-  show($('loginCard'),false); show($('appCard'),false); show($('editCard'),false);
-  show($('accessCard'),false); show($('logout'),false); show($('newpwCard'),true);
+  show($('adminShell'),false); show($('logout'),false);
+  show($('loginWrap'),true); show($('loginCard'),false); show($('newpwCard'),true);
 }
 async function doNewPw(){
   const a=$('np1').value, b=$('np2').value;
