@@ -242,15 +242,22 @@ async function getMicrosoft(client) {
     log(`  graph users: ${u.length} gebruikers, ${inact.length} inactief>60d`);
   } catch (e) { log('  graph users: FOUT', e.message); }
 
-  // --- MFA-registratie per gebruiker (vereist Entra ID P1/P2) ---
+  // --- MFA-dekking per gebruiker (vereist Entra ID P1/P2) ---
   try {
-    const rep = (await jfetch('https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationDetails?$top=200', H)).value || [];
-    const rows = rep.slice(0, 20).map(x => [x.userDisplayName || x.userPrincipalName, '\u2014',
-      x.isMfaRegistered ? { t: 'Aan', cls: 'c-success b' } : { t: 'Uit', cls: 'c-danger b' }, (x.methodsRegistered || []).join(', ') || '\u2014', mfaStrength(x.methodsRegistered)]);
-    if (rows.length) out.details.mfa = { title: 'MFA & sterke authenticatie \u2014 per gebruiker', src: 'Entra ID \u00b7 Graph', cols: ['Gebruiker', 'Afdeling', 'MFA', 'Methode', 'Sterkte'], rows };
-    log(`  graph mfa: ${rep.length} registraties`);
+    const rep = (await jfetch('https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationDetails?$top=400', H)).value || [];
+    if (rep.length) {
+      const total = rep.length, withMfa = rep.filter(x => x.isMfaRegistered).length;
+      out.scorecard.mfacov = Math.round(withMfa / total * 100);
+      const zonder = rep.filter(x => !x.isMfaRegistered).slice(0, 100)
+        .map(x => [x.userDisplayName || x.userPrincipalName, '\u2014', (x.methodsRegistered || []).join(', ') || 'geen']);
+      out.details.mfacov = { title: 'MFA-dekking \u2014 gebruikers zonder MFA', src: 'Entra ID \u00b7 Graph',
+        lead: '\u26A0 Persoonsdata \u2014 uitsluitend intern. Dekking ' + out.scorecard.mfacov + '% (' + withMfa + '/' + total + ' gebruikers met MFA). Hieronder wie MFA nog mist.',
+        cols: ['Gebruiker', 'Afdeling', 'Geregistreerde methoden'],
+        rows: zonder.length ? zonder : [['\u2014 alle gebruikers hebben MFA \u2014', '', '']] };
+    }
+    log(`  graph mfa-dekking: ${rep.length} gebruiker(s)`);
   } catch (e) { log('  graph mfa (P1/P2 vereist):', e.message.split('::')[0]); }
-  // Identity-tegel: geen MFA-lijst beschikbaar? Val terug op de identity-verbeterpunten uit Secure Score.
+  // Identity-tegel: doorklik = de identity-verbeterpunten uit Secure Score.
   if (!out.details.mfa && out._identityRows && out._identityRows.length) {
     out.details.mfa = { title: 'Identity Secure Score \u2014 verbeterpunten', src: 'Microsoft Graph',
       lead: 'Maatregelen rond identiteit en toegang die de Identity Secure Score bepalen. \u201eScore\u201d = behaalde punten; laag = ruimte voor verbetering.',
@@ -390,12 +397,12 @@ async function getFreshdesk(client) {
 
 /* === OVERLAY ============================================================ */
 function setKpi(base, det, val) { const k = base.scorecard.find(x => x.det === det); if (!k || val == null) return;
-  const pct = ['secure', 'mfa', 'identity', 'nis2', 'patch', 'aware'].includes(det);
+  const pct = ['secure', 'mfa', 'mfacov', 'identity', 'nis2', 'patch', 'aware'].includes(det);
   k.val = pct && !String(val).includes('%') ? String(val) + '%' : String(val); }
 const tile = (list, needle, val) => { const t = (list || []).find(x => x.lbl && x.lbl.toLowerCase().includes(needle)); if (t && val != null) t.val = String(val); };
 function overlay(base, slices) {
   for (const s of slices) { if (!s) continue;
-    if (s.scorecard) for (const d of ['secure', 'mfa', 'identity', 'nis2', 'patch', 'aware', 'vuln', 'phish', 'dlp', 'threats']) if (s.scorecard[d] != null) setKpi(base, d, s.scorecard[d]);
+    if (s.scorecard) for (const d of ['secure', 'mfa', 'mfacov', 'identity', 'nis2', 'patch', 'aware', 'vuln', 'phish', 'dlp', 'threats']) if (s.scorecard[d] != null) setKpi(base, d, s.scorecard[d]);
     if (s.service?.totaalVal) base.service.totaal.val = s.service.totaalVal;
     if (s.service?.slaVal) base.service.sla.val = s.service.slaVal;
     if (s.service?.tickets?.length) base.service.tickets = s.service.tickets;
@@ -582,14 +589,14 @@ async function main() {
   const clients = CFG.offline
     ? [{ id: 'demo', name: 'De Jong Logistics B.V.', slug: 'dejong', tenant_id: null }]
     : await listClients();
-  log(`Start maand-run [BUILD-20 · AI-vertaling maatregelen] voor ${clients.length} klant(en)`);
+  log(`Start maand-run [BUILD-22 · MFA-dekking apart] voor ${clients.length} klant(en)`);
   const res = { ok: [], fail: [] };
   for (let i = 0; i < clients.length; i += CFG.run.batchSize) {
     await Promise.all(clients.slice(i, i + CFG.run.batchSize).map(async c => {
       try {
         const data = await buildForClient(c, templateHtml);
         if (CFG.offline) { const out = path.join(CFG.outDir, `QBR_${c.name.replace(/[^\w]+/g, '_')}.html`); fs.writeFileSync(out, injectBase(templateHtml, data)); log('  offline geschreven:', out); }
-        else await pushSnapshot({ client: c.id, quarter: data.meta.quarter, generated_at: new Date().toISOString(), status: 'published', data });
+        else await pushSnapshot({ client: c.id, msp_id: c.msp_id || null, quarter: data.meta.quarter, generated_at: new Date().toISOString(), status: 'published', data });
         res.ok.push(c.name);
       } catch (e) { res.fail.push({ client: c.name, error: e.message }); log('  FOUT', c.name, e.message); }
     }));
