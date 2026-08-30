@@ -125,6 +125,7 @@
     <a data-sec="klantstijl"><span class="nz">&#127912;</span> Klant-huisstijl</a>
     <a data-sec="toegang"><span class="nz">&#128273;</span> Klant-toegang</a>
     <div class="navttl" style="margin-top:18px">Organisatie</div>
+    <a data-sec="integraties"><span class="nz">&#128268;</span> Integraties</a>
     <a data-sec="mspstijl"><span class="nz">&#9733;</span> Onze huisstijl</a>
   </aside>
   <main class="adminmain">
@@ -187,37 +188,61 @@
 
   <div id="connCard" class="card secblock" data-sec="koppel">
     <h2>Koppelingen (per klant)</h2>
-    <p class="hint">Alleen verwijzingen/ID's — geen wachtwoorden of API-sleutels (die horen server-side). Status: <span style="color:#1a7f37;font-weight:600">werkend</span> = gekoppeld en getest · <span style="color:#B7791F;font-weight:600">voorbereid</span> = veld staat klaar, bron nog te activeren.</p>
+    <p class="hint">Alleen verwijzingen/ID's — geen wachtwoorden of API-sleutels (die horen server-side). Alleen integraties die je MSP gebruikt worden getoond (in te stellen bij <b>Integraties</b>).</p>
 
+    <div class="connfield" data-integr="microsoft">
     <label>Microsoft tenant-id <span style="color:#1a7f37;font-size:12px">· werkend · ook Defender &amp; Purview (vereist E5)</span></label>
     <input id="c_tenant" placeholder="00000000-0000-0000-0000-000000000000">
+    </div>
 
-    <label style="margin-top:12px">Freshdesk company-id <span style="color:#B7791F;font-size:12px">· voorbereid · tickets/service</span></label>
+    <div class="connfield" data-integr="freshdesk">
+    <label style="margin-top:12px">Freshdesk company-id <span style="color:#B7791F;font-size:12px">· tickets/service</span></label>
     <input id="c_fresh" placeholder="bijv. 8000012345">
+    </div>
 
-    <label style="margin-top:12px">IT Glue organisatie-id <span style="color:#B7791F;font-size:12px">· voorbereid · CMDB/hardware</span></label>
+    <div class="connfield" data-integr="itglue">
+    <label style="margin-top:12px">IT Glue organisatie-id <span style="color:#B7791F;font-size:12px">· CMDB/hardware</span></label>
     <input id="c_itglue" placeholder="bijv. 12345678">
+    </div>
 
-    <label style="margin-top:12px">Compliance Manager / GRC client-id <span style="color:#B7791F;font-size:12px">· voorbereid · NIS2</span></label>
+    <div class="connfield" data-integr="grc">
+    <label style="margin-top:12px">Compliance Manager / GRC client-id <span style="color:#B7791F;font-size:12px">· NIS2</span></label>
     <input id="c_grc" placeholder="client-id GRC">
+    </div>
 
-    <label style="margin-top:12px">Datto RMM site-id <span style="color:#B7791F;font-size:12px">· voorbereid · patch/endpoint</span></label>
+    <div class="connfield" data-integr="datto">
+    <label style="margin-top:12px">Datto RMM site-id <span style="color:#B7791F;font-size:12px">· patch/endpoint</span></label>
     <input id="c_dattosite" placeholder="site-id">
-
-    <label style="margin-top:12px">Datto BCDR / continuïteit-id <span style="color:#B7791F;font-size:12px">· voorbereid · back-up</span></label>
+    <label style="margin-top:12px">Datto BCDR / continuïteit-id <span style="color:#B7791F;font-size:12px">· back-up</span></label>
     <input id="c_dattosaas" placeholder="id">
+    </div>
 
-    <label style="margin-top:12px">RocketCyber customer-id <span style="color:#B7791F;font-size:12px">· voorbereid · SOC/MDR</span></label>
+    <div class="connfield" data-integr="rocketcyber">
+    <label style="margin-top:12px">RocketCyber customer-id <span style="color:#B7791F;font-size:12px">· SOC/MDR</span></label>
     <input id="c_rocket" placeholder="customer-id">
+    </div>
 
-    <label style="margin-top:12px">BullPhish / K365 User org-id <span style="color:#B7791F;font-size:12px">· voorbereid · awareness</span></label>
+    <div class="connfield" data-integr="awareness">
+    <label style="margin-top:12px">BullPhish / K365 User org-id <span style="color:#B7791F;font-size:12px">· awareness</span></label>
     <input id="c_bullphish" placeholder="org-id">
+    </div>
 
-    <label style="margin-top:12px">Slug (INKY / SaaS Alerts filter) <span style="color:#B7791F;font-size:12px">· voorbereid · e-mail/SaaS</span></label>
+    <div class="connfield" data-integr="saas">
+    <label style="margin-top:12px">Slug (INKY / SaaS Alerts filter) <span style="color:#B7791F;font-size:12px">· e-mail/SaaS</span></label>
     <input id="c_slug" placeholder="korte klantcode">
+    </div>
 
+    <div id="connEmpty" class="hint hidden" style="margin-top:8px">Nog geen integraties actief. Zet ze aan bij <b>Integraties</b> (menu Organisatie).</div>
     <div style="margin-top:16px"><button id="connBtn">Koppelingen opslaan</button></div>
     <div id="connMsg"></div>
+  </div>
+
+  <div id="integrCard" class="card secblock" data-sec="integraties">
+    <h2>Integraties (MSP-breed)</h2>
+    <p class="hint">Zet aan welke integraties jullie als MSP gebruiken. Alleen ingeschakelde integraties verschijnen bij de per-klant-koppelingen. De <b>API-sleutels</b> worden server-side beheerd (nooit in deze pagina).</p>
+    <div id="integrList"></div>
+    <div style="margin-top:16px"><button id="integrBtn">Integraties opslaan</button></div>
+    <div id="integrMsg"></div>
   </div>
 
   <div id="brandMspCard" class="card secblock" data-sec="mspstijl">
@@ -281,8 +306,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -333,7 +358,7 @@ async function onSession(session){
   show($('adminShell'), true); show($('logout'), true);
   $('who').textContent = session.user.email;
   initNav();
-  loadClients(); initAccess(); loadOverview(); loadMspBranding();
+  loadClients(); initAccess(); loadOverview(); loadMspBranding(); loadIntegrations();
 }
 
 /* ---- Huisstijl (logo-upload naar Storage, MSP + klant) ---- */
@@ -398,6 +423,68 @@ async function saveClientBranding(){
     $('k_logoPrev').dataset.url=logo_url||''; setPrev($('k_logoPrev'),logo_url); $('k_logoFile').value='';
     msg($('brandClientMsg'),'Klant-huisstijl opgeslagen.',true); loadOverview();
   }catch(e){ msg($('brandClientMsg'),'Opslaan mislukt: '+e.message,false); }
+}
+
+/* ---- Integraties (MSP-breed) ---- */
+const INTEGRATIONS = [
+  { key:'microsoft', label:'Microsoft 365 (Graph)', hint:'Secure Score, licenties, MFA, Defender/Purview', always:true },
+  { key:'freshdesk', label:'Freshdesk', hint:'tickets & service', setting:{ id:'i_fresh_domain', label:'Freshdesk-domein (niet-geheim)' } },
+  { key:'itglue', label:'IT Glue', hint:'CMDB / hardware' },
+  { key:'grc', label:'Compliance Manager / GRC', hint:'NIS2' },
+  { key:'datto', label:'Datto RMM + BCDR', hint:'patch & back-up' },
+  { key:'rocketcyber', label:'RocketCyber', hint:'SOC / MDR' },
+  { key:'awareness', label:'BullPhish / K365', hint:'awareness-training' },
+  { key:'saas', label:'INKY / SaaS Alerts', hint:'e-mail & SaaS' },
+];
+let _integr = {}; // { key: {on:bool, domain:...} }
+function integrOn(key){ const v=_integr[key]; return !v || v.on !== false; } // aan tenzij expliciet uit
+async function loadIntegrations(){
+  const { data, error } = await sb.from('msp').select('integrations').limit(1).maybeSingle();
+  if(error){ msg($('integrMsg'),'Kan integraties niet laden: '+error.message+ (/column/.test(error.message)?' \u2014 draai schema_integrations.sql.':''),false); }
+  _integr = (data && data.integrations) || {};
+  renderIntegrations();
+  applyIntegrToConn();
+}
+function renderIntegrations(){
+  $('integrList').innerHTML = INTEGRATIONS.map(it=>{
+    const on = integrOn(it.key);
+    const set = it.setting ? `<input id="${it.setting.id}" placeholder="${it.setting.label}" style="margin-top:8px;max-width:340px" value="${(_integr[it.key]&&_integr[it.key].domain)||''}">` : '';
+    return `<div style="display:flex;flex-direction:column;gap:2px;padding:12px 0;border-bottom:1px solid var(--line)">
+      <label style="display:flex;gap:10px;align-items:center;margin:0;cursor:${it.always?'default':'pointer'}">
+        <input type="checkbox" data-integr="${it.key}" ${on?'checked':''} ${it.always?'disabled':''}>
+        <span style="font-weight:700">${it.label}</span>
+        <span class="hint" style="margin:0">${it.hint}${it.always?' · altijd aan':''}</span>
+      </label>${set}</div>`;
+  }).join('');
+  $('integrList').querySelectorAll('input[type=checkbox][data-integr]').forEach(c=> c.onchange=()=>applyIntegrToConn(true));
+}
+function applyIntegrToConn(fromToggle){
+  // welke integraties staan (in de UI) aan?
+  const state={};
+  INTEGRATIONS.forEach(it=>{
+    const cb=$('integrList').querySelector('input[data-integr="'+it.key+'"]');
+    state[it.key] = it.always ? true : (cb ? cb.checked : integrOn(it.key));
+  });
+  document.querySelectorAll('#connCard .connfield').forEach(f=>{
+    const key=f.getAttribute('data-integr');
+    f.classList.toggle('hidden', !state[key]);
+  });
+  const anyOn = Object.values(state).some(Boolean);
+  show($('connEmpty'), !anyOn);
+}
+async function saveIntegrations(){
+  const obj={};
+  INTEGRATIONS.forEach(it=>{
+    const cb=$('integrList').querySelector('input[data-integr="'+it.key+'"]');
+    const on = it.always ? true : (cb ? cb.checked : true);
+    obj[it.key] = { on };
+    if(it.setting){ const el=$(it.setting.id); if(el && el.value.trim()) obj[it.key].domain = el.value.trim(); }
+  });
+  const { data:mrow } = await sb.from('msp').select('id').limit(1).maybeSingle();
+  if(!mrow){ msg($('integrMsg'),'Geen MSP gevonden.',false); return; }
+  const { error } = await sb.from('msp').update({ integrations: obj }).eq('id', mrow.id);
+  if(error){ msg($('integrMsg'),'Opslaan mislukt: '+error.message,false); return; }
+  _integr = obj; msg($('integrMsg'),'Integraties opgeslagen.',true); applyIntegrToConn();
 }
 
 /* ---- Klantenoverzicht (strak, kleurgecodeerd, klikbaar detail) ---- */
@@ -533,6 +620,7 @@ async function loadConnections(clientId){
   const { data, error } = await sb.from('clients').select(cols).eq('id', clientId).single();
   if(error){ msg($('connMsg'),'Kan koppelingen niet laden: '+error.message,false); return; }
   for(const el in CONN_FIELDS){ $(el).value = data[CONN_FIELDS[el]] || ''; }
+  applyIntegrToConn();
   msg($('connMsg'),'',true);
 }
 async function saveConnections(){
@@ -674,6 +762,7 @@ $('client').onchange = e => { loadSnapshot(e.target.value); loadConnections(e.ta
 $('connBtn').onclick = saveConnections;
 $('brandMspBtn').onclick = saveMspBranding;
 $('brandClientBtn').onclick = saveClientBranding;
+$('integrBtn').onclick = saveIntegrations;
 $('ovSearch').oninput = () => renderOverview();
 $('ovAtt').onchange = () => renderOverview();
 $('ovModalClose').onclick = () => $('ovModal').classList.remove('open');
