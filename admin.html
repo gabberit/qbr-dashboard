@@ -100,6 +100,17 @@
   .sw input:disabled + .track{ opacity:.6; cursor:not-allowed; }
   .modebox{ border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:18px; background:#fff; }
   .modebox h3{ margin:0 0 4px; font-size:15px; }
+  .guidebtn{ background:none; border:1px solid var(--line); color:var(--ink); font-size:12px; font-weight:600; padding:5px 11px; border-radius:8px; cursor:pointer; white-space:nowrap; width:auto; }
+  .guidebtn:hover{ background:var(--ice); }
+  .guide h4{ font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:18px 0 6px; }
+  .guide h4:first-child{ margin-top:0; }
+  .guide p{ font-size:13.5px; margin:0 0 8px; }
+  .guide ol,.guide ul{ font-size:13.5px; margin:0 0 8px; padding-left:20px; }
+  .guide li{ margin-bottom:5px; }
+  .guide code{ background:#f0f0ee; padding:1px 6px; border-radius:5px; font-size:12.5px; }
+  .guide .tag{ display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .guide .tag.ok{ background:#e6f4ea; color:#1a7f37; } .guide .tag.prep{ background:#fdf0dd; color:#96631a; }
+  .guide .box{ border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:8px 0; background:#fafafa; }
 </style>
 </head>
 <body>
@@ -282,6 +293,13 @@
     <div id="integrMsg"></div>
   </div>
 
+  <div id="guideModal" class="mback">
+    <div class="mcard">
+      <div class="mhead"><button class="mclose" id="guideClose">&times;</button><h3 id="guideTitle"></h3><div class="msub" id="guideSub"></div></div>
+      <div class="mbody" id="guideBody"></div>
+    </div>
+  </div>
+
   <div id="brandMspCard" class="card secblock" data-sec="mspstijl">
     <h2>Onze huisstijl (MSP)</h2>
     <p class="hint">Geldt als standaard voor alle klanten. Per klant kun je hieronder afwijken.</p>
@@ -343,8 +361,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -474,6 +492,91 @@ const INTEGRATIONS = [
   { key:'saas', label:'INKY / SaaS Alerts', hint:'e-mail & SaaS' },
 ];
 let _integr = {}; // { key: {on:bool, domain:...} }
+
+/* ---- Handleidingen per dienst ---- */
+const GUIDES = {
+  microsoft: { title:'Microsoft 365 (Graph)', tag:'ok', tagtxt:'getest / werkend', body:`
+    <h4>Wat je meet</h4><p>Secure Score, Identity Secure Score, MFA-dekking, licenties, en (bij E5) Defender/Purview-signalen — via Microsoft Graph.</p>
+    <h4>Server-side (GitHub &rarr; Settings &rarr; Secrets)</h4>
+    <ul><li><code>MS_CLIENT_ID</code> — Application (client) ID van de app-registratie</li>
+    <li><code>MS_SECRET</code> — clientgeheim (waarde) van die app</li>
+    <li><code>MS_TEST_TENANT</code> — <i>optioneel</i>: vaste test-tenant-id voor modus &laquo;test&raquo;</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>Microsoft tenant-id + <b>Koppelmodus</b> (test of GDAP).</p>
+    <h4>Benodigde app-permissies (Application) + admin consent</h4>
+    <ul><li><code>Organization.Read.All</code> (licenties)</li><li><code>SecurityEvents.Read.All</code> (Secure Score / alerts)</li>
+    <li><code>Directory.Read.All</code> of <code>User.Read.All</code> (gebruikers/licenties per persoon)</li>
+    <li><code>AuditLog.Read.All</code> (inactieve accounts) — MFA-dekking vereist Entra ID P1/P2</li></ul>
+    <div class="box"><b>Modus 1 — Test-tenant (single-tenant, app-only)</b>
+    <ol><li>Maak in je <b>test-tenant</b> een app-registratie (single-tenant).</li>
+    <li>Voeg de bovenstaande <b>Application</b>-permissies toe en klik <b>Grant admin consent</b>.</li>
+    <li>Maak een clientgeheim; zet ID + secret als GitHub-secret (<code>MS_CLIENT_ID</code>/<code>MS_SECRET</code>).</li>
+    <li>Vul bij de klant de <b>tenant-id van de test-tenant</b> in en zet Koppelmodus op <b>Test-tenant</b>.</li></ol></div>
+    <div class="box"><b>Modus 2 — GDAP (multi-tenant, productie)</b>
+    <ol><li>Maak in je <b>MSP-tenant</b> een <b>multi-tenant</b> app-registratie met dezelfde permissies.</li>
+    <li>Zorg voor actieve <b>GDAP-relaties</b> met de klant (met leesrollen zoals Global Reader).</li>
+    <li>Laat de app <b>consenten in de klant-tenant</b> (admin-consent-link naar een klantbeheerder, of via je Admin Agent-rol).</li>
+    <li>Vul bij de klant de <b>echte klant-tenant-id</b> in en zet Koppelmodus op <b>GDAP</b> (of MSP-breed via de standaardmodus bovenaan).</li></ol>
+    <p style="color:var(--muted)">GDAP levert pas data zodra de app in de klant-tenant is geconsenteerd. Tot dan houd je de klant op &laquo;test&raquo;.</p></div>` },
+
+  freshdesk: { title:'Freshdesk', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>Aantal tickets, SLA en top-categorieën.</p>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>FRESHDESK_DOMAIN</code> — jullie subdomein (bijv. <code>gabberit</code> van <code>gabberit.freshdesk.com</code>)</li><li><code>FRESHDESK_KEY</code> — API-key</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>Freshdesk <b>company-id</b> van de klant.</p>
+    <h4>Stappen</h4><ol><li>Zet deze integratie <b>aan</b> en vul hierboven het Freshdesk-domein in.</li>
+    <li>Haal je API-key op: Freshdesk &rarr; profielicoon &rarr; <b>Profile settings</b> &rarr; <i>Your API Key</i>.</li>
+    <li>Zet de key als GitHub-secret <code>FRESHDESK_KEY</code> (en <code>FRESHDESK_DOMAIN</code>).</li>
+    <li>Vul per klant het company-id in (Freshdesk &rarr; Admin &rarr; Companies &rarr; klant &rarr; id in de URL).</li></ol>
+    <p style="color:var(--muted)">Status voorbereid: verifieer het API-endpoint/veld bij de eerste koppeling.</p>` },
+
+  itglue: { title:'IT Glue', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>Assets (CMDB) en end-of-life hardware.</p>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>ITGLUE_KEY</code> — API-key (IT Glue &rarr; Account &rarr; API Keys)</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>IT Glue <b>organisatie-id</b>.</p>
+    <h4>Stappen</h4><ol><li>Integratie <b>aan</b> zetten.</li><li>Maak een API-key in IT Glue en zet die als <code>ITGLUE_KEY</code>.</li>
+    <li>Vul per klant het organisatie-id in (te vinden in de URL van de organisatie).</li></ol>
+    <p style="color:var(--muted)">De koppeling van asset-types naar de hardware-tabel wordt bij het echt koppelen afgestemd op jullie IT Glue-structuur.</p>` },
+
+  grc: { title:'Compliance Manager / GRC', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>Technisch-meetbare NIS2-onderdelen (concept — te toetsen door jullie).</p>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>GRC_BASE</code> — API-basis-URL</li><li><code>GRC_KEY</code> — API-key</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>GRC <b>client-id</b>.</p>
+    <h4>Stappen</h4><ol><li>Integratie <b>aan</b>.</li><li>Basis-URL + key als secrets.</li><li>Client-id per klant invullen.</li></ol>
+    <p style="color:var(--muted)">Endpoint te verifiëren bij eerste koppeling; welk GRC-platform gebruiken jullie?</p>` },
+
+  datto: { title:'Datto RMM + BCDR', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>Patch-compliance (RMM) en back-up/continuïteit (BCDR).</p>
+    <h4>Server-side (GitHub Secrets)</h4>
+    <ul><li>RMM: <code>DRMM_PLATFORM</code>, <code>DRMM_KEY</code>, <code>DRMM_SECRET</code> (Datto RMM &rarr; Setup &rarr; API)</li>
+    <li>BCDR: <code>DATTO_PUBLIC_KEY</code>, <code>DATTO_SECRET_KEY</code> (Datto Portal &rarr; Integrations)</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>Datto RMM <b>site-id</b> en Datto BCDR <b>id</b>.</p>
+    <h4>Stappen</h4><ol><li>Integratie <b>aan</b>.</li><li>API-sleutels als secrets zetten.</li><li>Per klant site-id (RMM) en BCDR-id invullen.</li></ol>` },
+
+  rocketcyber: { title:'RocketCyber', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>SOC/MDR-incidenten (24/7 detectie & respons).</p>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>ROCKETCYBER_BASE</code> — API-basis</li><li><code>ROCKETCYBER_TOKEN</code> — API-token</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>RocketCyber <b>customer-id</b>.</p>
+    <h4>Stappen</h4><ol><li>Integratie <b>aan</b>.</li><li>Token als secret.</li><li>Customer-id per klant invullen.</li></ol>` },
+
+  awareness: { title:'BullPhish / K365', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>Phish-prone % (awareness-training).</p>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>BULLPHISH_BASE</code> — API-basis</li><li><code>BULLPHISH_KEY</code> — API-key</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p>BullPhish / K365 <b>org-id</b>.</p>
+    <h4>Stappen</h4><ol><li>Integratie <b>aan</b>.</li><li>Key als secret.</li><li>Org-id per klant invullen.</li></ol>` },
+
+  saas: { title:'INKY / SaaS Alerts', tag:'prep', tagtxt:'voorbereid', body:`
+    <h4>Wat je meet</h4><p>E-mailbeveiliging (INKY) en SaaS-signalen (SaaS Alerts).</p>
+    <h4>Server-side (GitHub Secrets)</h4><ul><li><code>INKY_KEY</code>, <code>SAASALERTS_KEY</code> (+ bijbehorende base-URL's)</li></ul>
+    <h4>Per klant (Koppelingen)</h4><p><b>Slug</b> (korte klantcode die in beide diensten de klant identificeert).</p>
+    <h4>Stappen</h4><ol><li>Integratie <b>aan</b>.</li><li>Keys als secrets.</li><li>Slug per klant invullen.</li></ol>` },
+};
+function openGuide(key){
+  const g = GUIDES[key]; if(!g) return;
+  $('guideTitle').innerHTML = g.title + ' <span class="tag '+g.tag+'" style="font-size:11px;padding:2px 9px;border-radius:999px;margin-left:6px">'+g.tagtxt+'</span>';
+  $('guideSub').textContent = 'Koppelhandleiding';
+  $('guideBody').innerHTML = '<div class="guide">'+g.body+'</div>';
+  $('guideModal').classList.add('open');
+}
+
 function integrOn(key){ const v=_integr[key]; return !v || v.on !== false; } // aan tenzij expliciet uit
 async function loadIntegrations(){
   const { data, error } = await sb.from('msp').select('integrations').limit(1).maybeSingle();
@@ -496,9 +599,11 @@ function renderIntegrations(){
         <div class="inthint">${it.hint}</div>
         ${set}
       </div>
+      <button class="guidebtn" data-guide="${it.key}" type="button">Handleiding</button>
       ${badge}
     </div>`;
   }).join('');
+  $('integrList').querySelectorAll('.guidebtn[data-guide]').forEach(btn=> btn.onclick=()=>openGuide(btn.getAttribute('data-guide')));
   $('integrList').querySelectorAll('input[type=checkbox][data-integr]').forEach(c=> c.onchange=()=>{
     const key=c.getAttribute('data-integr');
     const row=$('integrList').querySelector('.introw[data-row="'+key+'"]');
@@ -822,6 +927,8 @@ $('connBtn').onclick = saveConnections;
 $('brandMspBtn').onclick = saveMspBranding;
 $('brandClientBtn').onclick = saveClientBranding;
 $('integrBtn').onclick = saveIntegrations;
+$('guideClose').onclick = () => $('guideModal').classList.remove('open');
+$('guideModal').onclick = (e) => { if(e.target===$('guideModal')) $('guideModal').classList.remove('open'); };
 $('ovSearch').oninput = () => renderOverview();
 $('ovAtt').onchange = () => renderOverview();
 $('ovModalClose').onclick = () => $('ovModal').classList.remove('open');
