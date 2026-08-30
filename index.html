@@ -925,8 +925,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
