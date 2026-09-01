@@ -931,8 +931,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
@@ -942,6 +942,8 @@ function loginOverlay(msg){
   o.innerHTML='<div style="background:#fff;border-radius:14px;padding:34px 32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4)">'
     +'<div style="font-weight:800;font-size:20px;letter-spacing:.02em;margin-bottom:2px">QBR-portaal</div>'
     +'<div style="color:#6b6b6b;font-size:13px;margin-bottom:20px">Log in om uw rapportage te bekijken.</div>'
+    +'<button id="qbrMsBtn" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1D1D1B;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px"><svg width="17" height="17" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>Inloggen met Microsoft</button>'
+    +'<div style="display:flex;align-items:center;gap:10px;margin:16px 0"><div style="flex:1;height:1px;background:#e5e5e5"></div><span style="color:#aaa;font-size:12px">of met e-mail</span><div style="flex:1;height:1px;background:#e5e5e5"></div></div>'
     +'<input id="qbrEmail" type="email" placeholder="E-mailadres" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px">'
     +'<input id="qbrPass" type="password" placeholder="Wachtwoord" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:16px">'
     +'<button id="qbrLoginBtn" style="width:100%;padding:12px;border:0;border-radius:8px;background:#FFC20E;color:#1D1D1B;font-weight:700;cursor:pointer">Inloggen</button>'
@@ -965,6 +967,13 @@ function loginOverlay(msg){
   }
   btn.addEventListener("click", doLogin);
   pw.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  o.querySelector("#qbrMsBtn").addEventListener("click", async ()=>{
+    ms.style.color="#6b6b6b"; ms.textContent="U wordt doorgestuurd naar Microsoft\u2026";
+    const { error } = await sb.auth.signInWithOAuth({ provider:'azure',
+      options:{ scopes:'openid email profile', redirectTo: location.origin+location.pathname } });
+    if(error){ ms.style.color="#C0392B"; ms.textContent="Microsoft-login mislukt: "+error.message; }
+    // bij succes stuurt de browser automatisch door naar Microsoft
+  });
 }
 
 function newPasswordOverlay(){

@@ -370,6 +370,8 @@
     <select id="accClient"></select>
     <label style="margin-top:12px">User UID (uit Supabase &rarr; Authentication &rarr; Users)</label>
     <input id="accUid" placeholder="bijv. a1b2c3d4-e5f6-...">
+    <label style="margin-top:12px">E-mail of naam (ter herkenning in de lijst)</label>
+    <input id="accLabel" placeholder="bijv. jan@peter-geld.nl">
     <div style="margin-top:14px"><button id="linkBtn">Koppelen</button></div>
     <div id="accMsg"></div>
     <h2 style="margin-top:22px;font-size:15px">Gekoppelde accounts voor dit bedrijf</h2>
@@ -380,8 +382,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -884,24 +886,30 @@ async function initAccess(){
 }
 async function renderLinks(){
   const cid = $('accClient').value; if(!cid){ $('accList').textContent='—'; return; }
-  const { data, error } = await sb.from('client_members').select('user_id').eq('client_id', cid);
+  const { data, error } = await sb.from('client_members').select('user_id,label').eq('client_id', cid);
   if(error){ $('accList').textContent = 'Kan koppelingen niet laden: '+error.message; return; }
   if(!data || !data.length){ $('accList').textContent = 'Nog geen accounts gekoppeld aan dit bedrijf.'; return; }
   $('accList').innerHTML = data.map(r=>
-    `<div style="display:flex;gap:10px;align-items:center;margin:6px 0">
-       <code style="font-size:12px;flex:1;word-break:break-all">${r.user_id}</code>
-       <button class="ghost" data-uid="${r.user_id}" style="padding:4px 10px">Ontkoppelen</button>
+    `<div style="display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin:8px 0">
+       <div style="flex:1;min-width:0">
+         <div style="font-weight:600;font-size:13.5px">${r.label ? r.label : '<span style="color:#999">(geen naam ingevuld)</span>'}</div>
+         <code style="font-size:11px;color:#999;word-break:break-all">${r.user_id}</code>
+       </div>
+       <button data-uid="${r.user_id}" style="background:#fbe4e4;color:#b3261e;border:1px solid #f3c2c2;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;width:auto;white-space:nowrap">Ontkoppelen</button>
      </div>`).join('');
   $('accList').querySelectorAll('button[data-uid]').forEach(b=>{
     b.onclick = ()=>unlinkAccount(cid, b.getAttribute('data-uid'));
   });
 }
 async function linkAccount(){
-  const cid = $('accClient').value, uid = $('accUid').value.trim();
+  const cid = $('accClient').value, uid = $('accUid').value.trim(), label = $('accLabel').value.trim();
   if(!uid){ msg($('accMsg'),'Vul een User UID in.',false); return; }
-  const { error } = await sb.from('client_members').insert({ user_id: uid, client_id: cid });
-  if(error){ msg($('accMsg'), 'Koppelen mislukt: '+error.message, false); return; }
-  $('accUid').value=''; msg($('accMsg'),'Account gekoppeld.',true); renderLinks();
+  const { error } = await sb.from('client_members').insert({ user_id: uid, client_id: cid, label: label||null });
+  if(error){
+    if(/duplicate key|unique constraint/i.test(error.message)){ msg($('accMsg'),'Dit account is al gekoppeld aan dit bedrijf.',true); renderLinks(); return; }
+    msg($('accMsg'), 'Koppelen mislukt: '+error.message, false); return;
+  }
+  $('accUid').value=''; $('accLabel').value=''; msg($('accMsg'),'Account gekoppeld.',true); renderLinks();
 }
 async function unlinkAccount(cid, uid){
   const { error } = await sb.from('client_members').delete().eq('client_id', cid).eq('user_id', uid);
