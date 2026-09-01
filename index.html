@@ -704,7 +704,7 @@ document.getElementById("heroWrap").innerHTML = `
   ${D.meta.badge?`<span class="tag">${D.meta.badge}</span>`:''}
   <div class="score">${D.scorecard.map(k=>{
     const real=!!D._sources, ok=!real||(D._kpiFilled||[]).includes(k.det);
-    const clickable = k.det && (k.det==='mfacov' || (ok && (!real || (D._detailsFilled||[]).includes(k.det))));
+    const clickable = !!k.det;  // alle tegels klikbaar: data -> detail, anders -> uitleg
     const val = ok ? k.val : '\u2014';
     const dl = ok ? `<div class="dl ${k.cls||''}">${k.delta||''}</div>` : `<div class="dl c-muted" style="font-size:11px;opacity:.7">geen bron</div>`;
     return `<div class="kpi${clickable?' clk':''}"${clickable?` data-det="${k.det}"`:''}><div class="lbl">${k.lbl}</div><div class="val">${val}</div>${dl}</div>`;
@@ -891,11 +891,24 @@ runAnims();
 
 /* ---- modal / drill-down ---- */
 const back=document.getElementById("modalBack"), mT=document.getElementById("mTitle"), mS=document.getElementById("mSrc"), mB=document.getElementById("mBody");
+/* Uitleg per scorecard-tegel (getoond bij doorklik als er nog geen bron is) */
+const KPI_UITLEG = {
+  secure:{ titel:'Microsoft Secure Score', bron:'Microsoft Graph', tekst:'Meet je algehele beveiligingsniveau tegen alle mogelijke Microsoft-maatregelen. Bron: Microsoft Graph. Verschijnt zodra Microsoft gekoppeld is.' },
+  mfa:{ titel:'Identity Secure Score', bron:'Microsoft Graph', tekst:'Samengestelde score over identiteit & toegang (MFA-configuratie, voorwaardelijke toegang, risicobeleid). Bron: Microsoft Graph. Verschijnt zodra Microsoft gekoppeld is.' },
+  mfacov:{ titel:'MFA-dekking', bron:'Entra ID · Graph', tekst:'Percentage gebruikers met MFA, en wie het nog mist. De per-gebruiker MFA-status vereist Entra ID P1/P2 of E5; bij een lager pakket levert Microsoft die gegevens niet. Dit is meteen een concreet upgrade-argument voor het gesprek.' },
+  nis2:{ titel:'Compliance (NIS2)', bron:'GRC / Compliance Manager', tekst:'Technisch-meetbare NIS2-onderdelen (concept, te toetsen). Bron: GRC / Compliance Manager. Verschijnt zodra die bron gekoppeld is.' },
+  vuln:{ titel:'Open kwetsbaarheden', bron:'RMM / vulnerability scan', tekst:'Openstaande kwetsbaarheden op endpoints en servers. Bron: RMM / vulnerability scan. Verschijnt zodra die bron gekoppeld is.' },
+  phish:{ titel:'Phishing geblokkeerd (mail)', bron:'Microsoft Defender + INKY', tekst:'Aantal geblokkeerde phishing-/spammails. Bron: Microsoft Defender + INKY. Verschijnt zodra die bronnen gekoppeld zijn.' },
+  dlp:{ titel:'DLP-incidenten (Purview)', bron:'Microsoft Purview', tekst:'Signalen van gegevensverlies-preventie. Bron: Microsoft Purview (vereist E5). Verschijnt zodra Purview beschikbaar en gekoppeld is.' },
+  aware:{ titel:'Phish-prone % (awareness)', bron:'BullPhish / K365', tekst:'Percentage gebruikers dat gevoelig blijkt in phishing-simulaties. Bron: awareness-training (BullPhish / K365). Verschijnt zodra die bron gekoppeld is.' },
+  patch:{ titel:'Patch-compliance (RMM)', bron:'Datto RMM', tekst:'Percentage systemen dat up-to-date is met patches. Bron: Datto RMM. Verschijnt zodra RMM gekoppeld is.' },
+};
 function openDetail(key){
   if(D._sources && !(D._detailsFilled||[]).includes(key)){
-    if(key==='mfacov'){
-      mT.textContent="MFA-dekking"; mS.textContent="Entra ID · Graph";
-      mB.innerHTML='<p style="color:var(--muted)">Nog geen MFA-dekkingsdata voor deze klant. De per-gebruiker MFA-status vereist Entra ID P1/P2 of E5; bij een lager pakket levert Microsoft die gegevens niet. Dit is meteen een concreet upgrade-argument voor het gesprek.</p>';
+    const u = KPI_UITLEG[key];
+    if(u){
+      mT.textContent=u.titel; mS.textContent=u.bron;
+      mB.innerHTML='<p style="color:var(--muted)">'+u.tekst+'</p>';
     } else {
       mT.textContent="Geen data"; mS.textContent=""; mB.innerHTML='<p style="color:var(--muted)">Voor dit onderdeel is nog geen bron gekoppeld.</p>';
     }
@@ -931,8 +944,8 @@ document.querySelectorAll('section[id], header[id]').forEach(s=>spy.observe(s));
 }
 
 /* ---- Supabase: ingelogd dashboard met rollen (manager ziet alles, klant ziet zichzelf) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key (RLS + login beschermen de data)
+const SUPA_URL  = "";   // bv. "https://xxxx.supabase.co"  (leeg = demo met voorbeelddata)
+const SUPA_ANON = "";   // anon public key (RLS + login beschermen de data)
 let sb = null;
 
 function loginOverlay(msg){
