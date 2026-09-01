@@ -128,8 +128,10 @@
   <div id="loginCard" class="card">
     <h1>Inloggen</h1>
     <p class="hint">Alleen voor beheerders. Accounts worden beheerd in Supabase.</p>
+    <button id="msLoginBtn" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:14px"><svg width="17" height="17" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>Inloggen met Microsoft</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="flex:1;height:1px;background:var(--line)"></div><span style="color:#aaa;font-size:12px">of met e-mail</span><div style="flex:1;height:1px;background:var(--line)"></div></div>
     <label>E-mail</label>
-    <input id="email" type="email" autocomplete="username" placeholder="jij@fivespark.nl">
+    <input id="email" type="email" autocomplete="username" placeholder="jij@bedrijf.nl">
     <label>Wachtwoord</label>
     <input id="password" type="password" autocomplete="current-password">
     <div style="margin-top:16px"><button id="loginBtn">Inloggen</button></div>
@@ -382,8 +384,8 @@
 
 <script>
 /* ---- Vul deze twee in (zelfde als in het dashboard) ---- */
-const SUPA_URL  = "https://dhgxtytauurzlsqzjxvl.supabase.co";   // https://xxxx.supabase.co
-const SUPA_ANON = "sb_publishable_unbg7obEM1l9iDzAu5kjbQ_e5eu8pAF";   // anon public key
+const SUPA_URL  = "";   // https://xxxx.supabase.co
+const SUPA_ANON = "";   // anon public key
 
 const sb = (SUPA_URL && SUPA_ANON) ? supabase.createClient(SUPA_URL, SUPA_ANON) : null;
 const $ = id => document.getElementById(id);
@@ -1005,6 +1007,13 @@ async function doNewPw(){
 $('loginBtn').onclick = doLogin;
 $('password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 $('forgot').onclick = doForgot;
+$('msLoginBtn').onclick = async () => {
+  if(!sb){ msg($('loginMsg'),'SUPA_URL / SUPA_ANON niet ingevuld.',false); return; }
+  msg($('loginMsg'),'U wordt doorgestuurd naar Microsoft\u2026',true);
+  const { error } = await sb.auth.signInWithOAuth({ provider:'azure',
+    options:{ scopes:'openid email profile', redirectTo: location.origin+location.pathname } });
+  if(error) msg($('loginMsg'),'Microsoft-login mislukt: '+error.message,false);
+};
 $('npBtn').onclick = doNewPw;
 $('logout').onclick = doLogout;
 $('client').onchange = e => { loadSnapshot(e.target.value); loadConnections(e.target.value); loadClientBranding(e.target.value); };
